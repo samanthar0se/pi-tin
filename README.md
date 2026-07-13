@@ -12,21 +12,30 @@ A small Windows desktop client for attaching to an already-running [Pi](https://
 
 ## Remote host setup
 
-Requirements: Pi >= 0.74, Node.js, pnpm, and a clone of this repository.
+Requirements: Pi >= 0.74, Node.js 22+ with Corepack, and a clone of this repository.
+
+Run the cross-platform host builder from the repository root:
 
 ```bash
-# Install Plannotator into Pi once
-pi install npm:@plannotator/pi-extension
-
-# Prepare this extension
-cd /path/to/pi-remote
-corepack enable
-pnpm install
-pnpm typecheck
-
-# Register the local package with Pi
-pi install /path/to/pi-remote/packages/pi-remote
+node ./build-host.mjs
 ```
+
+On Windows PowerShell, the same command is:
+
+```powershell
+node .\build-host.mjs
+```
+
+The builder:
+
+1. installs the locked workspace dependencies through Corepack;
+2. runs tests and type-checking;
+3. bundles the protocol, Zod, and WebSocket server into a self-contained `packages/pi-remote/dist/index.mjs`;
+4. installs or refreshes that built directory as a global local-path Pi package;
+5. installs or updates `@plannotator/pi-extension`;
+6. prints a generated token and the environment variables needed to start Pi.
+
+Re-run the file after `git pull` to rebuild and update the extension on that host. Use `--skip-tests` for a faster repeat build or `--skip-plannotator` to leave the installed Plannotator version unchanged.
 
 Set matching values before starting Pi. Use a long random token and unique ports for each simultaneous Pi process on the same machine.
 
