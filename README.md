@@ -107,7 +107,7 @@ Clone the repository, open PowerShell in its root, and run:
 powershell -ExecutionPolicy Bypass -File .\build-windows.ps1
 ```
 
-The script checks prerequisites, installs locked JavaScript dependencies, runs tests and type-checking, builds the Tauri NSIS installer, and copies the resulting `.exe` into `artifacts\`.
+The script checks prerequisites, installs locked JavaScript dependencies, runs tests and type-checking, then copies both the portable application and Tauri NSIS installer into `artifacts\`. The portable file is named `Pi-Remote-portable.exe` and can be run without installation.
 
 On a new Windows development machine, open PowerShell as Administrator and allow the script to install missing Node.js, Rust, and Visual C++ Build Tools through `winget`:
 
@@ -117,8 +117,17 @@ powershell -ExecutionPolicy Bypass -File .\build-windows.ps1 -InstallPrerequisit
 
 Optional flags:
 
+- `-PortableOnly` builds only `artifacts\Pi-Remote-portable.exe` and skips installer generation.
 - `-Clean` removes previous frontend, Rust, and artifact output first.
 - `-SkipTests` skips tests and type-checking for a faster repeat build.
+
+For a portable-only build:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\build-windows.ps1 -PortableOnly
+```
+
+The portable executable is self-contained except for Microsoft WebView2 Runtime, which is already present on current Windows 10/11 systems. On older or stripped-down Windows installations, install the WebView2 Evergreen Runtime before launching it.
 
 You can still invoke Tauri directly when both NSIS and MSI installers are wanted:
 

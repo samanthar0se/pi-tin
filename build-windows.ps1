@@ -2,7 +2,8 @@
 param(
     [switch]$InstallPrerequisites,
     [switch]$SkipTests,
-    [switch]$Clean
+    [switch]$Clean,
+    [switch]$PortableOnly
 )
 
 $ErrorActionPreference = "Stop"
@@ -139,19 +140,33 @@ if (-not $SkipTests) {
     Invoke-Checked "corepack" "pnpm" "-r" "typecheck"
 }
 
-Write-Step "Building the Windows NSIS executable"
-Invoke-Checked "corepack" "pnpm" "--filter" "@pi-remote/desktop" "tauri" "build" "--bundles" "nsis"
+if ($PortableOnly) {
+    Write-Step "Building the portable Windows executable"
+    Invoke-Checked "corepack" "pnpm" "--filter" "@pi-remote/desktop" "tauri" "build" "--no-bundle"
+} else {
+    Write-Step "Building the portable executable and NSIS installer"
+    Invoke-Checked "corepack" "pnpm" "--filter" "@pi-remote/desktop" "tauri" "build" "--bundles" "nsis"
+}
 
-$bundleDirectory = Join-Path $repoRoot "apps\desktop\src-tauri\target\release\bundle\nsis"
-$executables = @(Get-ChildItem -Path $bundleDirectory -Filter "*.exe" -File -ErrorAction SilentlyContinue)
-if ($executables.Count -eq 0) {
-    throw "Tauri finished, but no NSIS executable was found in $bundleDirectory"
+$releaseDirectory = Join-Path $repoRoot "apps\desktop\src-tauri\target\release"
+$portableExecutable = Join-Path $releaseDirectory "pi-remote.exe"
+if (-not (Test-Path $portableExecutable)) {
+    throw "Tauri finished, but the portable executable was not found at $portableExecutable"
 }
 
 $artifactDirectory = Join-Path $repoRoot "artifacts"
 New-Item -ItemType Directory -Path $artifactDirectory -Force | Out-Null
-foreach ($executable in $executables) {
-    Copy-Item $executable.FullName -Destination $artifactDirectory -Force
+Copy-Item $portableExecutable -Destination (Join-Path $artifactDirectory "Pi-Remote-portable.exe") -Force
+
+if (-not $PortableOnly) {
+    $bundleDirectory = Join-Path $releaseDirectory "bundle\nsis"
+    $installers = @(Get-ChildItem -Path $bundleDirectory -Filter "*.exe" -File -ErrorAction SilentlyContinue)
+    if ($installers.Count -eq 0) {
+        throw "Tauri finished, but no NSIS installer was found in $bundleDirectory"
+    }
+    foreach ($installer in $installers) {
+        Copy-Item $installer.FullName -Destination $artifactDirectory -Force
+    }
 }
 
 Write-Host "`nBuild complete." -ForegroundColor Green
