@@ -69,6 +69,7 @@ export class HostController implements HostBackend {
   }
 
   async handle(command: ClientCommand): Promise<{ data?: unknown }> {
+    if (command.type === "restart_pi") return { data: await this.restartRpc() };
     const rpc = this.requireRpc();
     switch (command.type) {
       case "prompt": await rpc.prompt(command.message); return {};
@@ -81,6 +82,27 @@ export class HostController implements HostBackend {
       case "set_plan_mode": return { data: await this.setPlanMode(command.mode) };
       case "start_code_review": return { data: await this.startCodeReview() };
     }
+  }
+
+  private async restartRpc(): Promise<{ sessionFile: string | null }> {
+    if (this.rpcStatus === "starting" || this.recovering) throw new Error("Pi is already restarting.");
+    if (this.review.active) throw new Error("Finish the active review before restarting Pi.");
+    const rpc = this.rpc;
+    if (rpc) {
+      try {
+        const state = await rpc.getState();
+        this.activePath = state.sessionFile || this.activePath;
+        this.persist();
+      } catch {}
+    }
+    this.rpc = null;
+    this.running = false;
+    this.rpcStatus = "starting";
+    this.emitHostState();
+    if (rpc) try { await rpc.stop(); } catch {}
+    await this.startRpc(this.cwd, this.activePath && existsSync(this.activePath) ? this.activePath : undefined);
+    this.emit(await this.snapshot());
+    return { sessionFile: this.activePath };
   }
 
   private async startRpc(cwd: string, sessionPath?: string): Promise<void> {

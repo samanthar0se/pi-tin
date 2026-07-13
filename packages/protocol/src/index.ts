@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const PROTOCOL_VERSION = 3 as const;
+export const PROTOCOL_VERSION = 4 as const;
 const requestId = z.string().min(1).max(128);
 const text = z.string().max(2_000_000);
 const commandBase = { id: requestId } as const;
@@ -14,6 +14,7 @@ export const clientCommandSchema = z.discriminatedUnion("type", [
   z.object({ ...commandBase, type: z.literal("steer"), message: text }).strict(),
   z.object({ ...commandBase, type: z.literal("follow_up"), message: text }).strict(),
   z.object({ ...commandBase, type: z.literal("abort") }).strict(),
+  z.object({ ...commandBase, type: z.literal("restart_pi") }).strict(),
   z.object({ ...commandBase, type: z.literal("set_model"), provider: z.string().min(1), modelId: z.string().min(1) }).strict(),
   z.object({ ...commandBase, type: z.literal("set_thinking"), level: z.enum(["off", "minimal", "low", "medium", "high", "xhigh", "max"]) }).strict(),
   z.object({ ...commandBase, type: z.literal("compact"), customInstructions: z.string().max(20_000).optional() }).strict(),

@@ -5,6 +5,7 @@ describe("protocol v3 validation", () => {
   it("accepts auth and request-ID commands", () => {
     expect(clientMessageSchema.parse({ type: "auth", version: PROTOCOL_VERSION, token: "secret" }).type).toBe("auth");
     expect(clientMessageSchema.parse({ type: "prompt", id: "r1", message: "hello" }).type).toBe("prompt");
+    expect(clientMessageSchema.parse({ type: "restart_pi", id: "r2" }).type).toBe("restart_pi");
   });
   it("rejects malformed and unknown messages", () => {
     expect(clientMessageSchema.safeParse({ type: "abort" }).success).toBe(false);

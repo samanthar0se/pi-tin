@@ -90,6 +90,7 @@ function Composer() {
   const command = useAppStore((s) => s.command);
   const [guidance, setGuidance] = useState("");
   const [delivery, setDelivery] = useState<"steer" | "follow_up">("steer");
+  const [stopping, setStopping] = useState(false);
   if (running) {
     const sendGuidance = () => {
       const message = guidance.trim();
@@ -97,10 +98,16 @@ function Composer() {
       setGuidance("");
       void command({ type: delivery, message });
     };
+    const stop = async () => {
+      setStopping(true);
+      try { await command({ type: "abort" }); }
+      catch (error) { toast.error(error instanceof Error ? error.message : "Could not stop Pi"); }
+      finally { setStopping(false); }
+    };
     return <div className="composer active-composer">
       <textarea value={guidance} onChange={(e) => setGuidance(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); sendGuidance(); } }} rows={1} placeholder={delivery === "steer" ? "Send guidance during this turn…" : "Queue a follow-up turn…"} />
       <div className="composer-row"><select value={delivery} onChange={(e) => setDelivery(e.target.value as typeof delivery)}><option value="steer">Steer now</option><option value="follow_up">Follow up</option></select><div>
-        <ComposerPrimitive.Cancel asChild><button className="stop-button" title="Stop"><Square size={13} fill="currentColor" /></button></ComposerPrimitive.Cancel>
+        <button className="stop-button" disabled={!connected || stopping} onClick={() => void stop()} title="Stop Pi"><Square size={11} fill="currentColor" />{stopping ? "Stopping…" : "Stop"}</button>
         <button className="send-button" disabled={!connected || !guidance.trim()} onClick={sendGuidance} title="Send guidance"><ArrowUp size={17} /></button>
       </div></div>
     </div>;
