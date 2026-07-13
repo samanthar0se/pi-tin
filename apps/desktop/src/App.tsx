@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Brain, ChevronDown, Code2, Moon, Settings, Sparkles, Sun, Unplug, Zap } from "lucide-react";
+import { Archive, Code2, Moon, Settings, Sun, Unplug, Zap } from "lucide-react";
 import { Toaster, toast } from "sonner";
 import { HostSettingsDialog } from "./components/HostSettingsDialog";
 import { Thread } from "./components/assistant-ui/Thread";
@@ -30,14 +30,13 @@ export default function App() {
   return <div className="app-shell">
     <main>
       <header className="topbar">
-        <div className="session-heading"><strong>{session.sessionName || "Remote Pi session"}</strong><span>{session.cwd || (profile ? "Waiting for Pi…" : "Configure the connection in Settings")}</span></div>
-        <div className={`connection-pill ${state}`}><i />{state}{detail && <span> · {detail}</span>}</div>
+        <div className="product-mark"><span>π</span><strong>Pi <em>Work</em></strong></div>
+        <div className="session-heading"><strong>{session.sessionName || "Remote Pi session"}</strong><span title={session.cwd || undefined}>{session.cwd || (profile ? "Waiting for Pi…" : "Configure the connection in Settings")}</span></div>
         <div className="top-actions">
-          <label className="select-control"><Sparkles size={15} /><select disabled={!connected} value={session.model ? `${session.model.provider}/${session.model.id}` : ""} onChange={(event) => { const [provider, ...rest] = event.target.value.split("/"); run("Switch model", command({ type: "set_model", provider, modelId: rest.join("/") })); }}><option value="">Model</option>{session.availableModels.map((model) => <option key={`${model.provider}/${model.id}`} value={`${model.provider}/${model.id}`}>{model.name || model.id}</option>)}</select><ChevronDown size={13} /></label>
-          <label className="select-control"><Brain size={15} /><select disabled={!connected} value={session.thinkingLevel} onChange={(event) => run("Thinking level", command({ type: "set_thinking", level: event.target.value as any }))}>{["off", "minimal", "low", "medium", "high", "xhigh"].map((value) => <option key={value}>{value}</option>)}</select><ChevronDown size={13} /></label>
+          <div className={`connection-pill ${state}`} title={detail}><i />{state}</div>
           <button disabled={!connected} className={session.planPhase !== "idle" ? "active-control" : ""} onClick={() => run("Plan mode", command({ type: "set_plan_mode", mode: session.planPhase === "idle" ? "enter" : "exit" }))}><Zap size={15} /> Plan</button>
-          <button disabled={!connected || Boolean(review)} onClick={() => run("Code review", command({ type: "start_code_review" }))}><Code2 size={15} /> Review changes</button>
-          <button disabled={!connected || session.isRunning} onClick={() => run("Compact", command({ type: "compact" }))}>Compact</button>
+          <button disabled={!connected || Boolean(review)} onClick={() => run("Code review", command({ type: "start_code_review" }))}><Code2 size={15} /> Review</button>
+          <button className="icon-button" disabled={!connected || session.isRunning} onClick={() => run("Compact", command({ type: "compact" }))} title="Compact context"><Archive size={16} /></button>
           <button className="icon-button" onClick={() => setSettingsOpen(true)} title="Connection settings"><Settings size={16} /></button>
           <button className="icon-button" onClick={() => setDark((value) => !value)} title="Toggle theme">{dark ? <Sun size={16} /> : <Moon size={16} />}</button>
         </div>

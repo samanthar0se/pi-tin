@@ -6,7 +6,8 @@ import {
   ThreadPrimitive,
   useAssistantState,
 } from "@assistant-ui/react";
-import { ArrowDown, ArrowUp, Check, Copy, Square } from "lucide-react";
+import { ArrowDown, ArrowUp, Brain, Check, ChevronDown, Copy, Sparkles, Square } from "lucide-react";
+import { toast } from "sonner";
 import { MarkdownText } from "./MarkdownText";
 import { ToolCard } from "./ToolCard";
 import { useAppStore } from "../../remote/store";
@@ -73,6 +74,16 @@ function RunningDot() {
   return running ? <div className="thinking-dot"><i /><i /><i /></div> : null;
 }
 
+function ComposerControls({ connected }: { connected: boolean }) {
+  const session = useAppStore((state) => state.session);
+  const command = useAppStore((state) => state.command);
+  const run = (label: string, promise: Promise<unknown>) => toast.promise(promise, { loading: label, success: `${label} requested`, error: (caught) => caught.message });
+  return <div className="composer-controls">
+    <label><Sparkles size={14} /><select aria-label="Model" disabled={!connected} value={session.model ? `${session.model.provider}/${session.model.id}` : ""} onChange={(event) => { const [provider, ...rest] = event.target.value.split("/"); run("Switch model", command({ type: "set_model", provider, modelId: rest.join("/") })); }}><option value="">Choose model</option>{session.availableModels.map((model) => <option key={`${model.provider}/${model.id}`} value={`${model.provider}/${model.id}`}>{model.name || model.id}</option>)}</select><ChevronDown size={12} /></label>
+    <label><Brain size={14} /><select aria-label="Thinking level" disabled={!connected} value={session.thinkingLevel} onChange={(event) => run("Thinking level", command({ type: "set_thinking", level: event.target.value as any }))}>{["off", "minimal", "low", "medium", "high", "xhigh"].map((value) => <option key={value}>{value}</option>)}</select><ChevronDown size={12} /></label>
+  </div>;
+}
+
 function Composer() {
   const connected = useAppStore((s) => s.connectionState === "connected");
   const running = useAssistantState((s) => s.thread.isRunning);
@@ -96,7 +107,7 @@ function Composer() {
   }
   return <ComposerPrimitive.Root className="composer">
     <ComposerPrimitive.Input disabled={!connected} autoFocus rows={1} placeholder={connected ? "Ask Pi to make a change…" : "Select a connected instance"} />
-    <div className="composer-row"><span>Enter to send · Shift+Enter for newline</span><div>
+    <div className="composer-row"><ComposerControls connected={connected} /><div>
       <ComposerPrimitive.Send asChild><button className="send-button" disabled={!connected} title="Send"><ArrowUp size={17} /></button></ComposerPrimitive.Send>
     </div></div>
   </ComposerPrimitive.Root>;
