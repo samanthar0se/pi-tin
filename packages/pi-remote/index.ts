@@ -10,10 +10,10 @@ import {
 } from "@pi-remote/protocol";
 import { WebSocket, WebSocketServer } from "ws";
 import { codeReviewFollowUp, routePlanReviewEvent } from "./review-routing.ts";
+import { createTokenStore } from "./token-store.ts";
 
 const PORT = readPort("PI_REMOTE_PORT", 31415);
 const HOST = process.env.PI_REMOTE_HOST || "0.0.0.0";
-const TOKEN = process.env.PI_REMOTE_TOKEN || "";
 const PLANNOTATOR_PORT = readPort("PLANNOTATOR_PORT", 19432);
 const PLANNOTATOR_REQUEST = "plannotator:request";
 const AUTH_TIMEOUT_MS = 5_000;
@@ -29,22 +29,10 @@ export function tokensEqual(expectedToken: string, candidate: string): boolean {
   return expected.length > 0 && expected.length === actual.length && timingSafeEqual(expected, actual);
 }
 
-function tokenMatches(candidate: string): boolean {
-  return tokensEqual(TOKEN, candidate);
-}
-
 export default function piRemote(pi: ExtensionAPI): void {
-  pi.registerCommand("pi-remote-token", {
-    description: "Show the pre-shared token used by Pi Remote",
-    handler: async (_args, ctx) => {
-      if (!TOKEN) {
-        ctx.ui.notify("Pi Remote token is not configured. Set PI_REMOTE_TOKEN before starting Pi.", "warning");
-        return;
-      }
-      ctx.ui.notify(`PI_REMOTE_TOKEN=${TOKEN}`, "info");
-    },
-  });
-
+  const tokenStore = createTokenStore();
+  let token = tokenStore.get();
+  const tokenMatches = (candidate: string): boolean => tokensEqual(token, candidate);
   let latestCtx: ExtensionContext | null = null;
   let server: HttpServer | null = null;
   let wss: WebSocketServer | null = null;
@@ -52,6 +40,20 @@ export default function piRemote(pi: ExtensionAPI): void {
   const clients = new Map<WebSocket, { authenticated: boolean; timer: NodeJS.Timeout }>();
   const activePlanReviews = new Map<string, string>();
   let activeCodeReview: string | null = null;
+
+  pi.registerCommand("pi-remote", {
+    description: "Open Pi Remote settings",
+    handler: async (_args, ctx) => {
+      const choice = await ctx.ui.select("Pi Remote settings", ["Generate new token", "Display token"]);
+      if (choice === "Generate new token") {
+        token = tokenStore.rotate();
+        for (const client of clients.keys()) client.close(4004, "Pi Remote token regenerated");
+        ctx.ui.notify(`New Pi Remote token: ${token}`, "info");
+      } else if (choice === "Display token") {
+        ctx.ui.notify(`Pi Remote token: ${token}`, "info");
+      }
+    },
+  });
 
   function reviewUrl(): string {
     return process.env.PLANNOTATOR_PUBLIC_URL || `http://localhost:${PLANNOTATOR_PORT}`;
@@ -227,10 +229,6 @@ export default function piRemote(pi: ExtensionAPI): void {
 
   function startServer(): void {
     if (server) return;
-    if (!TOKEN) {
-      console.error("[pi-remote] PI_REMOTE_TOKEN is required; server not started.");
-      return;
-    }
     server = createServer((req, res) => {
       if (req.url !== "/health") {
         res.writeHead(404).end();

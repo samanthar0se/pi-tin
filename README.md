@@ -33,16 +33,15 @@ The builder:
 3. bundles the protocol, Zod, and WebSocket server into a self-contained `packages/pi-remote/dist/index.mjs`;
 4. installs or refreshes that built directory as a global local-path Pi package;
 5. installs or updates `@plannotator/pi-extension`;
-6. prints a generated token and the environment variables needed to start Pi.
+6. explains how to display or rotate the extension-generated token.
 
 Re-run the file after `git pull` to rebuild and update the extension on that host. Use `--skip-tests` for a faster repeat build or `--skip-plannotator` to leave the installed Plannotator version unchanged.
 
-Set matching values before starting Pi. Use a long random token and unique ports for each simultaneous Pi process on the same machine.
+Set matching ports before starting Pi. Each extension installation automatically generates a cryptographically random token and persists it in `~/.pi/agent/pi-remote.json` with user-only permissions. Use unique control and review ports for each simultaneous Pi process on the same machine.
 
 ```bash
 export PI_REMOTE_HOST=0.0.0.0
 export PI_REMOTE_PORT=31415
-export PI_REMOTE_TOKEN='replace-with-a-long-random-token'
 export PLANNOTATOR_REMOTE=1
 export PLANNOTATOR_PORT=19432
 
@@ -51,7 +50,7 @@ pi
 # pi --plan
 ```
 
-The extension refuses to listen when `PI_REMOTE_TOKEN` is empty. Run `/pi-remote-token` inside Pi to display the token configured for the current process. `PLANNOTATOR_REMOTE=1` makes Plannotator bind its transient UI to the LAN; it does not try to open a browser on the remote machine.
+Run `/pi-remote` inside Pi to open its settings menu. Choose **Display token** when configuring the desktop client, or **Generate new token** to rotate it and disconnect clients authenticated with the old value. `PLANNOTATOR_REMOTE=1` makes Plannotator bind its transient UI to the LAN; it does not try to open a browser on the remote machine.
 
 Allow only your local subnet through the firewall. Example with UFW:
 
@@ -71,7 +70,7 @@ New-NetFirewallRule -DisplayName "Pi Remote Plannotator" -Direction Inbound -Act
 
 1. Start Pi manually on the remote host with the environment above.
 2. Open Pi Remote and choose **+** in the instance sidebar.
-3. Enter a name, the remote IP/hostname, `31415`, `19432`, and the same token.
+3. Run `/pi-remote` → **Display token** on the host, then enter that token with the host name/IP, `31415`, and `19432`.
 4. Save. A green indicator and session working directory confirm that the authoritative snapshot arrived.
 
 The token is stored in Tauri Store as local application data, not Windows Credential Manager. This is an explicit personal-project tradeoff.

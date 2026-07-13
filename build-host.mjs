@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -68,19 +67,18 @@ if (!skipPlannotator) {
   run("pi", ["update", "--extension", "npm:@plannotator/pi-extension"], { label: "Updating Plannotator" });
 }
 
-const suggestedToken = randomBytes(24).toString("hex");
 console.log("\nHost extension installation complete.");
 console.log("Restart any running Pi process so it reloads the extension.");
-console.log("\nSet these values before starting Pi (use your existing token if already configured):");
+console.log("The extension generates and securely stores a random token on first load.");
+console.log("Run /pi-remote in Pi, then choose Display token to copy it into the desktop profile.");
+console.log("Choose Generate new token from the same menu whenever the token should be rotated.");
+console.log("\nOptional port settings before starting Pi:");
 if (process.platform === "win32") {
-  console.log(`  $env:PI_REMOTE_TOKEN=\"${suggestedToken}\"`);
   console.log("  $env:PI_REMOTE_PORT=\"31415\"");
   console.log("  $env:PLANNOTATOR_REMOTE=\"1\"");
   console.log("  $env:PLANNOTATOR_PORT=\"19432\"");
 } else {
-  console.log(`  export PI_REMOTE_TOKEN='${suggestedToken}'`);
   console.log("  export PI_REMOTE_PORT=31415");
   console.log("  export PLANNOTATOR_REMOTE=1");
   console.log("  export PLANNOTATOR_PORT=19432");
 }
-console.log("\nUse the same token and ports in the Pi Remote desktop profile.");
