@@ -140,8 +140,10 @@ if (-not $SkipTests) {
     Invoke-Checked "corepack" "pnpm" "-r" "typecheck"
 }
 
-Write-Step "Invalidating the cached desktop shell while preserving dependency caches"
-Invoke-Checked "cargo" "clean" "--manifest-path" "apps\desktop\src-tauri\Cargo.toml" "--package" "pi-remote" "--release"
+Write-Step "Removing all cached release output"
+Invoke-Checked "cargo" "clean" "--manifest-path" "apps\desktop\src-tauri\Cargo.toml" "--release"
+$env:VITE_BUILD_REVISION = (git rev-parse --short HEAD).Trim()
+Write-Host "Desktop source revision: $env:VITE_BUILD_REVISION"
 
 if ($PortableOnly) {
     Write-Step "Building the portable Windows executable"

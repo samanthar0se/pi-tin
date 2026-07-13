@@ -104,7 +104,7 @@ Clone the repository, open PowerShell in its root, and run:
 powershell -ExecutionPolicy Bypass -File .\build-windows.ps1
 ```
 
-The script checks prerequisites, installs locked JavaScript dependencies, runs tests and type-checking, invalidates the cached desktop shell so fresh frontend assets are embedded, then copies both the portable application and Tauri NSIS installer into `artifacts\`. The portable file is named `Pi-Remote-portable.exe` and can be run without installation.
+The script checks prerequisites, installs locked JavaScript dependencies, runs tests and type-checking, removes all cached release output so fresh frontend assets are embedded, then copies both the portable application and Tauri NSIS installer into `artifacts\`. The portable file is named `Pi-Remote-portable.exe` and can be run without installation.
 
 On a new Windows development machine, open PowerShell as Administrator and allow the script to install missing Node.js, Rust, and Visual C++ Build Tools through `winget`:
 

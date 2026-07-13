@@ -4,6 +4,7 @@ import type { HostProfile } from "../remote/connection";
 import { useAppStore } from "../remote/store";
 
 const blank = (): HostProfile => ({ host: "", controlPort: 31415, plannotatorPort: 19432, token: "" });
+const buildRevision = import.meta.env.VITE_BUILD_REVISION || "development";
 
 export function HostSettingsDialog({ onClose }: { onClose: () => void }) {
   const profile = useAppStore((state) => state.profile);
@@ -20,6 +21,7 @@ export function HostSettingsDialog({ onClose }: { onClose: () => void }) {
     <div className="field-row"><label>Control port<input required type="number" value={editing.controlPort} onChange={(event) => setEditing({ ...editing, controlPort: Number(event.target.value) })} /></label><label>Review port<input required type="number" value={editing.plannotatorPort} onChange={(event) => setEditing({ ...editing, plannotatorPort: Number(event.target.value) })} /></label></div>
     <label>Generated token<input required type="password" value={editing.token} onChange={(event) => setEditing({ ...editing, token: event.target.value })} /></label>
     <p>Copy the token printed by `start-host.mjs`. Saving replaces the single configured connection.</p>
+    <p className="build-revision">Desktop build {buildRevision}</p>
     <footer>{profile && <button className="danger" type="button" onClick={() => void clear().then(onClose)}><Trash2 size={15} /> Remove connection</button>}<span /><button type="button" onClick={onClose}>Cancel</button><button className="primary" type="submit">Save & connect</button></footer>
   </form></div>;
 }
