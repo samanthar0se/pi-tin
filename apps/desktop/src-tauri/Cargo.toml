@@ -1,6 +1,6 @@
 [package]
 name = "pi-remote"
-version = "0.1.0"
+version = "0.1.1"
 description = "Windows client for remote Pi sessions"
 authors = ["Pi Remote contributors"]
 edition = "2021"
