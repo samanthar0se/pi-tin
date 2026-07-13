@@ -99,16 +99,37 @@ pnpm tauri dev           # native development window
 
 The browser-only UI falls back to `localStorage` for profiles. A Tauri build uses the Store plugin.
 
-## Build Windows installers
+## Build the Windows executable on another computer
+
+Clone the repository, open PowerShell in its root, and run:
 
 ```powershell
-cd C:\git\pi-remote
-pnpm test
-pnpm typecheck
-pnpm --filter @pi-remote/desktop tauri build --bundles msi,nsis
+powershell -ExecutionPolicy Bypass -File .\build-windows.ps1
 ```
 
-Artifacts are written below `apps/desktop/src-tauri/target/release/bundle/`.
+The script checks prerequisites, installs locked JavaScript dependencies, runs tests and type-checking, builds the Tauri NSIS installer, and copies the resulting `.exe` into `artifacts\`.
+
+On a new Windows development machine, open PowerShell as Administrator and allow the script to install missing Node.js, Rust, and Visual C++ Build Tools through `winget`:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\build-windows.ps1 -InstallPrerequisites
+```
+
+Optional flags:
+
+- `-Clean` removes previous frontend, Rust, and artifact output first.
+- `-SkipTests` skips tests and type-checking for a faster repeat build.
+
+You can still invoke Tauri directly when both NSIS and MSI installers are wanted:
+
+```powershell
+corepack pnpm install --frozen-lockfile
+corepack pnpm test
+corepack pnpm typecheck
+corepack pnpm --filter @pi-remote/desktop tauri build --bundles msi,nsis
+```
+
+Native bundle output is written below `apps/desktop/src-tauri/target/release/bundle/`.
 
 ## Focused smoke test
 
