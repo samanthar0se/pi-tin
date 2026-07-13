@@ -1,14 +1,14 @@
 # Pi Remote
 
-A small Windows desktop client for attaching to an already-running [Pi](https://github.com/earendil-works/pi) coding-agent session on a trusted local network. It mirrors the live conversation and tool lifecycle, exposes model/thinking/plan controls, and opens [Plannotator](https://github.com/backnotprop/plannotator) plan and code reviews inside the app.
+A small Windows desktop client for controlling [Pi](https://github.com/earendil-works/pi) coding-agent sessions on a trusted local network. It lists saved sessions across projects, switches the active writable session through Pi RPC, mirrors live chat/tool activity, and embeds [Plannotator](https://github.com/backnotprop/plannotator) reviews.
 
 ## MVP boundaries
 
-- One active connection at a time; multiple host profiles can be saved.
-- Pi is started manually on the remote host. Pi Remote does not use SSH or supervise processes.
-- Current live session only—no historical session browser, file manager, attachments, or cloud service.
+- One selected host and one active Pi RPC session at a time; multiple hosts and saved sessions are supported.
+- A foreground host controller owns the RPC child process. It is not a system service and does not use SSH.
+- Session delete/fork/clone, simultaneous agents, file management, attachments, and cloud services are deferred.
 - Control traffic is token-authenticated but uses plain WebSocket on the LAN.
-- Plannotator's transient review port is currently unauthenticated upstream. Restrict both ports with the host firewall and do not expose them to the internet.
+- Plannotator's transient review port remains unauthenticated upstream. Restrict both ports with the host firewall and do not expose them to the internet.
 
 ## Remote host setup
 
@@ -26,31 +26,20 @@ On Windows PowerShell, the same command is:
 node .\build-host.mjs
 ```
 
-The builder:
+The builder installs dependencies, runs focused validation, bundles the foreground host controller, installs the small `/pi-remote` settings extension, and installs/updates Plannotator.
 
-1. installs the locked workspace dependencies through Corepack;
-2. runs tests and type-checking;
-3. bundles the protocol, Zod, and WebSocket server into a self-contained `packages/pi-remote/dist/index.mjs`;
-4. installs or refreshes that built directory as a global local-path Pi package;
-5. installs or updates `@plannotator/pi-extension`;
-6. explains how to display or rotate the extension-generated token.
-
-Re-run the file after `git pull` to rebuild and update the extension on that host. Use `--skip-tests` for a faster repeat build or `--skip-plannotator` to leave the installed Plannotator version unchanged.
-
-Set matching ports before starting Pi. Each extension installation automatically generates a cryptographically random token and persists it in `~/.pi/agent/pi-remote.json` with user-only permissions. Use unique control and review ports for each simultaneous Pi process on the same machine.
+Re-run it after `git pull`, then start remote control from the repository root:
 
 ```bash
 export PI_REMOTE_HOST=0.0.0.0
 export PI_REMOTE_PORT=31415
-export PLANNOTATOR_REMOTE=1
 export PLANNOTATOR_PORT=19432
-
-# Start normally, or begin in Plannotator plan mode
-pi
-# pi --plan
+node ./start-host.mjs
 ```
 
-Run `/pi-remote` inside Pi to open its settings menu. Choose **Display token** when configuring the desktop client, or **Generate new token** to rotate it and disconnect clients authenticated with the old value. `PLANNOTATOR_REMOTE=1` makes Plannotator bind its transient UI to the LAN; it does not try to open a browser on the remote machine.
+The controller prints its cryptographically random token at startup and persists it in `~/.pi/agent/pi-remote.json`. It starts one Pi `--mode rpc` child, lists sessions through Pi's session manager, and restores the last active session after restart. Run a separate normal TUI process only when local terminal use is wanted; it is independent of the controller.
+
+Run `/pi-remote` in a normal Pi TUI to display or rotate the shared token. Rotation disconnects authenticated desktop clients. Use `--skip-tests` for a quick host rebuild or `--skip-plannotator` to leave Plannotator unchanged.
 
 Allow only your local subnet through the firewall. Example with UFW:
 
@@ -68,10 +57,10 @@ New-NetFirewallRule -DisplayName "Pi Remote Plannotator" -Direction Inbound -Act
 
 ## Add the host in the Windows app
 
-1. Start Pi manually on the remote host with the environment above.
-2. Open Pi Remote and choose **+** in the instance sidebar.
-3. Run `/pi-remote` → **Display token** on the host, then enter that token with the host name/IP, `31415`, and `19432`.
-4. Save. A green indicator and session working directory confirm that the authoritative snapshot arrived.
+1. Start `node ./start-host.mjs` on the remote machine and copy the printed token.
+2. Open Host Settings from the gear beside the top host selector.
+3. Enter the host/IP, `31415`, `19432`, and token, then save and connect.
+4. The left sidebar loads real Pi sessions. Select any row to make it active, or use **+** to start a session in a known project.
 
 The token is stored in Tauri Store as local application data, not Windows Credential Manager. This is an explicit personal-project tradeoff.
 
@@ -152,7 +141,8 @@ Native bundle output is written below `apps/desktop/src-tauri/target/release/bun
 
 Use a Windows client and a second LAN machine running Pi:
 
-- connect and receive the existing session snapshot;
+- connect, load the session catalog, and receive the active snapshot;
+- switch between sessions from two projects and create a new session;
 - send and observe streaming text/thinking;
 - run a tool and inspect running/completed output;
 - stop a run;
@@ -164,4 +154,4 @@ Use a Windows client and a second LAN machine running Pi:
 
 ## Design and licenses
 
-The transport intentionally follows Tau's excellent in-process Pi extension pattern: raw lifecycle events over WebSocket, request-ID commands, reconnect backoff, and a fresh authoritative snapshot. Tau is MIT-licensed. Plannotator is MIT OR Apache-2.0, and assistant-ui is MIT. See each dependency/repository for its license text.
+The transport retains Tau's excellent WebSocket ideas—raw lifecycle events, request-ID commands, reconnect backoff, and authoritative snapshots—while the host controller uses Pi's public RPC and `SessionManager` APIs for full session switching. Tau is MIT-licensed. Plannotator is MIT OR Apache-2.0, and assistant-ui is MIT. See each dependency/repository for its license text.

@@ -18,7 +18,10 @@ export function createTokenStore(path = defaultTokenPath()): TokenStore {
   let token = readToken(path) || generateAndWriteToken(path);
   return {
     path,
-    get: () => token,
+    get: () => {
+      token = readToken(path) || token;
+      return token;
+    },
     rotate: () => {
       token = generateAndWriteToken(path);
       return token;

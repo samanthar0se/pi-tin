@@ -9,6 +9,7 @@ describe("protocol v1 validation", () => {
   it("rejects malformed and unknown messages", () => {
     expect(clientMessageSchema.safeParse({ type: "abort" }).success).toBe(false);
     expect(clientMessageSchema.safeParse({ type: "shell", id: "r1", command: "rm -rf /" }).success).toBe(false);
+    expect(clientMessageSchema.parse({ type: "switch_session", id: "r2", sessionId: "opaque" }).type).toBe("switch_session");
     expect(() => parseServerMessage({ type: "snapshot", version: 99 })).toThrow();
   });
 });

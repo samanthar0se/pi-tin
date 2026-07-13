@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { Brain, ChevronDown, Code2, Moon, PanelLeft, Sparkles, Sun, Unplug, Zap } from "lucide-react";
+import { Brain, ChevronDown, Code2, Moon, PanelLeft, Settings, Sparkles, Sun, Unplug, Zap } from "lucide-react";
 import { Toaster, toast } from "sonner";
-import { InstanceSidebar } from "./components/InstanceSidebar";
+import { SessionSidebar } from "./components/SessionSidebar";
+import { HostSettingsDialog } from "./components/HostSettingsDialog";
 import { Thread } from "./components/assistant-ui/Thread";
 import { ReviewPanel } from "./components/review/ReviewPanel";
 import { PiRuntimeProvider } from "./runtime/PiRuntimeProvider";
@@ -16,6 +17,10 @@ export default function App() {
   const review = useAppStore((s) => s.review);
   const showReview = useAppStore((s) => s.showReview);
   const error = useAppStore((s) => s.lastError);
+  const profiles = useAppStore((s) => s.profiles);
+  const activeProfileId = useAppStore((s) => s.activeProfileId);
+  const activate = useAppStore((s) => s.activate);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [dark, setDark] = useState(() => matchMedia("(prefers-color-scheme: dark)").matches);
   const [sidebar, setSidebar] = useState(true);
 
@@ -26,10 +31,11 @@ export default function App() {
   const run = (label: string, promise: Promise<unknown>) => toast.promise(promise, { loading: label, success: `${label} requested`, error: (e) => e.message });
   const connected = state === "connected";
   return <div className={`app-shell ${sidebar ? "" : "sidebar-hidden"}`}>
-    {sidebar && <InstanceSidebar />}
+    {sidebar && <SessionSidebar />}
     <main>
       <header className="topbar">
         <button className="icon-button" onClick={() => setSidebar((v) => !v)} title="Toggle sidebar"><PanelLeft size={17} /></button>
+        <div className="host-picker"><select value={activeProfileId || ""} onChange={(e) => e.target.value ? activate(e.target.value) : setSettingsOpen(true)}><option value="">Select host…</option>{profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}</select><button className="icon-button" onClick={() => setSettingsOpen(true)} title="Host settings"><Settings size={15} /></button></div>
         <div className="session-heading"><strong>{session.sessionName || "Remote Pi session"}</strong><span>{session.cwd || "No instance selected"}</span></div>
         <div className={`connection-pill ${state}`}><i />{state}{detail && <span> · {detail}</span>}</div>
         <div className="top-actions">
@@ -47,6 +53,7 @@ export default function App() {
         {review?.visible ? <ReviewPanel /> : <PiRuntimeProvider><Thread /></PiRuntimeProvider>}
       </section>
     </main>
+    {settingsOpen && <HostSettingsDialog onClose={() => setSettingsOpen(false)} />}
     <Toaster richColors position="bottom-right" theme={dark ? "dark" : "light"} />
   </div>;
 }

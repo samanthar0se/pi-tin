@@ -22,7 +22,7 @@ describe("connection auth boundary", () => {
     connection.connect({ id: "1", name: "host", host: "10.0.0.2", controlPort: 31415, plannotatorPort: 19432, token: "token" });
     socket.onopen!(new Event("open"));
     expect(JSON.parse(socket.sent[0]!)).toMatchObject({ type: "auth", token: "token" });
-    socket.onmessage!({ data: JSON.stringify({ type: "snapshot", version: 1, sessionFile: null, sessionName: null, cwd: "/x", entries: [], model: null, availableModels: [], thinkingLevel: "off", isRunning: false, contextUsage: null, planPhase: "idle" }) } as MessageEvent);
+    socket.onmessage!({ data: JSON.stringify({ type: "snapshot", version: 2, sessionFile: null, sessionName: null, cwd: "/x", entries: [], model: null, availableModels: [], thinkingLevel: "off", isRunning: false, contextUsage: null, planPhase: "idle" }) } as MessageEvent);
     const pending = connection.command({ type: "abort" });
     const command = JSON.parse(socket.sent[1]!);
     socket.onmessage!({ data: JSON.stringify({ type: "response", id: command.id, command: "abort", success: true }) } as MessageEvent);

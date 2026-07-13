@@ -109,7 +109,8 @@ export function reducePiEvent(state: SessionState, rawEvent: unknown): SessionSt
   const event = asObject(rawEvent);
   switch (event.type) {
     case "agent_start": return { ...state, isRunning: true };
-    case "agent_end": return { ...state, isRunning: false };
+    case "agent_end":
+    case "agent_settled": return { ...state, isRunning: false };
     case "message_start": {
       const msg = asObject(event.message);
       if (msg.role !== "assistant" && msg.role !== "user") return state;
@@ -153,8 +154,10 @@ export function reducePiEvent(state: SessionState, rawEvent: unknown): SessionSt
     case "model_select": return { ...state, model: event.model ?? state.model };
     case "thinking_level_select": return { ...state, thinkingLevel: String(event.level ?? state.thinkingLevel) };
     case "plan_phase": return { ...state, planPhase: event.phase };
-    case "session_before_compact": return { ...state, isRunning: true };
-    case "session_compact": return { ...state, isRunning: false };
+    case "session_before_compact":
+    case "compaction_start": return { ...state, isRunning: true };
+    case "session_compact":
+    case "compaction_end": return { ...state, isRunning: false };
     default: return state;
   }
 }

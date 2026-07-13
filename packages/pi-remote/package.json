@@ -10,16 +10,12 @@
     "bundle": "node ../../scripts/build-extension.mjs",
     "typecheck": "tsc -p tsconfig.json"
   },
-  "dependencies": {
-    "@pi-remote/protocol": "workspace:*",
-    "ws": "^8.18.3"
-  },
+  "dependencies": {},
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": ">=0.74.0"
   },
   "devDependencies": {
     "@earendil-works/pi-coding-agent": ">=0.74.0",
-    "@types/node": "^24.3.0",
-    "@types/ws": "^8.18.1"
+    "@types/node": "^24.3.0"
   }
 }

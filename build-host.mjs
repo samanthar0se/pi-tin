@@ -50,7 +50,8 @@ if (!skipTests) {
   run("corepack", ["pnpm", "-r", "typecheck"], { label: "Type-checking all packages" });
 }
 
-run("corepack", ["pnpm", "--filter", "@pi-remote/pi-extension", "bundle"], { label: "Building the self-contained Pi extension" });
+run("corepack", ["pnpm", "--filter", "@pi-remote/pi-extension", "bundle"], { label: "Building the Pi settings extension" });
+run("corepack", ["pnpm", "--filter", "@pi-remote/host", "bundle"], { label: "Building the Pi Remote host controller" });
 
 const extensionDir = resolve(root, "packages/pi-remote/dist");
 if (!existsSync(resolve(extensionDir, "index.mjs"))) {
@@ -67,11 +68,10 @@ if (!skipPlannotator) {
   run("pi", ["update", "--extension", "npm:@plannotator/pi-extension"], { label: "Updating Plannotator" });
 }
 
-console.log("\nHost extension installation complete.");
-console.log("Restart any running Pi process so it reloads the extension.");
-console.log("The extension generates and securely stores a random token on first load.");
-console.log("Run /pi-remote in Pi, then choose Display token to copy it into the desktop profile.");
-console.log("Choose Generate new token from the same menu whenever the token should be rotated.");
+console.log("\nHost controller build and settings extension installation complete.");
+console.log("Restart any running Pi process so it reloads the settings extension.");
+console.log("Start remote session control with: node ./start-host.mjs");
+console.log("The host prints its generated token at startup; /pi-remote can also display or rotate it in a TUI.");
 console.log("\nOptional port settings before starting Pi:");
 if (process.platform === "win32") {
   console.log("  $env:PI_REMOTE_PORT=\"31415\"");

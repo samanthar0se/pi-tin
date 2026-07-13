@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { load } from "@tauri-apps/plugin-store";
-import type { ClientCommandInput, ReviewStarted, ServerMessage } from "@pi-remote/protocol";
+import type { ClientCommandInput, ReviewStarted, ServerMessage, SessionItem } from "@pi-remote/protocol";
 import { PiConnection, type HostProfile } from "./connection";
 import { emptySession, reducePiEvent, replaceFromSnapshot, type SessionState } from "./reducer";
 
@@ -12,6 +12,10 @@ type AppStore = {
   connectionState: "connecting" | "connected" | "offline" | "error";
   connectionDetail?: string;
   session: SessionState;
+  sessions: SessionItem[];
+  activeSessionId: string | null;
+  switchingSessionId: string | null;
+  rpcStatus: "starting" | "ready" | "switching" | "error" | "stopped";
   review: ActiveReview | null;
   lastError?: string;
   hydrateProfiles: () => Promise<void>;
@@ -73,6 +77,12 @@ export const useAppStore = create<AppStore>((set, get) => {
     onMessage(message: ServerMessage) {
       if (message.type === "snapshot") {
         set({ session: replaceFromSnapshot(message), lastError: undefined });
+      } else if (message.type === "session_catalog") {
+        set({ sessions: message.sessions, activeSessionId: message.activeSessionId });
+      } else if (message.type === "session_switching") {
+        set({ switchingSessionId: message.sessionId });
+      } else if (message.type === "host_state") {
+        set({ rpcStatus: message.rpcStatus, lastError: message.error });
       } else if (message.type === "event") {
         set((state) => ({ session: reducePiEvent(state.session, message.event) }));
       } else if (message.type === "review_started") {
@@ -89,7 +99,8 @@ export const useAppStore = create<AppStore>((set, get) => {
   });
 
   return {
-    profiles: [], activeProfileId: null, connectionState: "offline", session: emptySession, review: null,
+    profiles: [], activeProfileId: null, connectionState: "offline", session: emptySession,
+    sessions: [], activeSessionId: null, switchingSessionId: null, rpcStatus: "stopped", review: null,
     async hydrateProfiles() {
       const data = await readProfiles();
       set(data);
@@ -106,7 +117,7 @@ export const useAppStore = create<AppStore>((set, get) => {
       if (activeProfileId === id) {
         connection.disconnect();
         activeProfileId = null;
-        set({ session: emptySession, review: null, connectionState: "offline" });
+        set({ session: emptySession, sessions: [], activeSessionId: null, switchingSessionId: null, review: null, connectionState: "offline" });
       }
       set({ profiles, activeProfileId });
       await writeProfiles(profiles, activeProfileId);
@@ -114,13 +125,13 @@ export const useAppStore = create<AppStore>((set, get) => {
     activate(id) {
       const profile = get().profiles.find((item) => item.id === id);
       if (!profile) return;
-      set({ activeProfileId: id, session: emptySession, review: null, lastError: undefined });
+      set({ activeProfileId: id, session: emptySession, sessions: [], activeSessionId: null, switchingSessionId: null, review: null, lastError: undefined });
       void writeProfiles(get().profiles, id);
       connection.connect(profile);
     },
     disconnect() {
       connection.disconnect();
-      set({ connectionState: "offline", connectionDetail: undefined, session: emptySession, review: null });
+      set({ connectionState: "offline", connectionDetail: undefined, review: null });
     },
     command(command, timeoutMs) { return connection.command(command, timeoutMs); },
     showReview(visible) { set((state) => ({ review: state.review ? { ...state.review, visible } : null })); },

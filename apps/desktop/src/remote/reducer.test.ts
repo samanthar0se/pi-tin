@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { emptySession, reducePiEvent, replaceFromSnapshot } from "./reducer";
 
 const snapshot = (name: string, text: string) => ({
-  type: "snapshot" as const, version: 1 as const, sessionFile: `${name}.jsonl`, sessionName: name, cwd: `/work/${name}`,
+  type: "snapshot" as const, version: 2 as const, sessionFile: `${name}.jsonl`, sessionName: name, cwd: `/work/${name}`,
   entries: [{ type: "message", id: `${name}-1`, message: { role: "user", content: text } }], model: null,
   availableModels: [], thinkingLevel: "off", isRunning: false, contextUsage: null, planPhase: "idle" as const,
 });

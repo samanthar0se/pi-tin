@@ -1,5 +1,7 @@
 # Remote Pi Windows Client — MVP Plan
 
+> The original attach-only transport described here has been superseded by `plans/full-session-control.md` and the Pi RPC host controller.
+
 ## Context
 
 Build a small personal Windows desktop client for controlling Pi coding-agent sessions running on machines on the same trusted local network. The app should provide a polished Codex-style chat UI, preserve Pi streaming/tool activity, and surface Plannotator plan/code-review workflows inside the desktop window.

@@ -116,15 +116,15 @@ Keep request IDs, Zod validation, auth-before-data, bounded reconnect, and snaps
 
 ## Steps
 
-- [ ] Add protocol v2 session/catalog schemas and compatibility failure handling.
-- [ ] Build the host controller around one Pi RPC child and forward existing chat/tool/model events.
-- [ ] Build the validated `SessionManager.listAll()` catalog and refresh it on startup, switch, new session, rename, and session completion.
-- [ ] Implement guarded `switch_session` and `new_session`, authoritative post-switch snapshots, crash recovery, and last-session persistence.
-- [ ] Move Plannotator review detection/invocation to the RPC relay and block unsafe switching during active reviews.
-- [ ] Reduce the Pi extension to token settings/shared token rotation responsibilities and make the host watch token changes.
-- [ ] Replace `InstanceSidebar` with `SessionSidebar`; move profile CRUD into Host Settings and add the top-level host selector.
-- [ ] Update `build-host.mjs`, add `start-host.mjs`, and document migration from manually started TUI mirroring.
-- [ ] Add focused protocol, catalog/path-validation, RPC-switch, crash-recovery, store-reset, and review-switch-guard tests.
+- [x] Add protocol v2 session/catalog schemas and compatibility failure handling.
+- [x] Build the host controller around one Pi RPC child and forward existing chat/tool/model events.
+- [x] Build the validated `SessionManager.listAll()` catalog and refresh it on startup, switch, new session, rename, and session completion.
+- [x] Implement guarded `switch_session` and `new_session`, authoritative post-switch snapshots, crash recovery, and last-session persistence.
+- [x] Move Plannotator review detection/invocation to the RPC relay and block unsafe switching during active reviews.
+- [x] Reduce the Pi extension to token settings/shared token rotation responsibilities and make the host watch token changes.
+- [x] Replace `InstanceSidebar` with `SessionSidebar`; move profile CRUD into Host Settings and add the top-level host selector.
+- [x] Update `build-host.mjs`, add `start-host.mjs`, and document migration from manually started TUI mirroring.
+- [x] Add focused protocol, catalog/path-validation, RPC-switch, crash-recovery, store-reset, and review-switch-guard tests.
 - [ ] Complete a two-machine smoke test with sessions from multiple projects, switching in both directions, a new session, reconnect during switching, and plan/code review before and after switches.
 
 ## Verification
