@@ -104,7 +104,7 @@ Update the repository and launch the current source directly in a native Tauri w
 powershell -ExecutionPolicy Bypass -File .\update-and-run-windows.ps1
 ```
 
-Use `run-windows.ps1` when the repository is already current. Both scripts skip tests, installers, and release packaging. Rust dependencies remain cached, Vite serves the current frontend directly, and the window reloads as UI files change. Stop it with `Ctrl+C`.
+Use `run-windows.ps1` when the repository is already current. The updater fetches the tracked upstream branch, refuses local commits or tracked edits instead of overwriting them, stops an existing Pi Remote development app before changing files, and then launches the fetched revision. Both scripts skip tests, installers, and release packaging. Rust dependencies remain cached, Vite serves the current frontend directly, and the window reloads as UI files change. Stop it with `Ctrl+C`.
 
 ## Build the Windows executable on another computer
 
