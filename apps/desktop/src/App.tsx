@@ -30,7 +30,7 @@ export default function App() {
   return <div className="app-shell">
     <main>
       <header className="topbar">
-        <div className="product-mark"><span>π</span><strong>Pi <em>Work</em></strong></div>
+        <div className="product-mark"><span>π</span><strong>Pi <em>Tin</em></strong></div>
         <div className="session-heading"><strong>{session.sessionName || "Remote Pi session"}</strong><span title={session.cwd || undefined}>{session.cwd || (profile ? "Waiting for Pi…" : "Configure the connection in Settings")}</span></div>
         <div className="top-actions">
           <div className={`connection-pill ${state}`} title={detail}><i />{state}</div>
