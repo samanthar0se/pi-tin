@@ -4,9 +4,11 @@ import {
   ComposerPrimitive,
   MessagePrimitive,
   ThreadPrimitive,
+  useAssistantApi,
   useAssistantState,
 } from "@assistant-ui/react";
 import { ArrowDown, ArrowUp, Brain, Check, ChevronDown, Copy, Sparkles, Square } from "lucide-react";
+import type { SlashCommand } from "@pi-remote/protocol";
 import { toast } from "sonner";
 import { MarkdownText } from "./MarkdownText";
 import { ToolCard } from "./ToolCard";
@@ -74,6 +76,36 @@ function RunningDot() {
   return running ? <div className="thinking-dot"><i /><i /><i /></div> : null;
 }
 
+type DisplayCommand = SlashCommand | { name: "new"; description: string; source: "client"; scope: "temporary" };
+
+function CommandCompletion({ text, connected, allowNew, onComplete }: { text: string; connected: boolean; allowNew: boolean; onComplete: (value: string) => void }) {
+  const remoteCommands = useAppStore((state) => state.session.commands);
+  const trimmed = text.trimStart();
+  if (!connected || !trimmed.startsWith("/") || trimmed.slice(1).includes(" ")) return null;
+  const query = trimmed.slice(1).toLowerCase();
+  const localCommands: DisplayCommand[] = allowNew
+    ? [{ name: "new", description: "Start a fresh persistent session", source: "client", scope: "temporary" }]
+    : [];
+  const commands: DisplayCommand[] = [...localCommands, ...remoteCommands.filter((command) => command.name !== "new")];
+  const matches = commands.filter((command) => command.name.toLowerCase().includes(query) || command.description?.toLowerCase().includes(query));
+  if (matches.length === 0) return null;
+  return <div className="command-completion" role="listbox" aria-label="Pi slash commands">
+    {matches.map((command) => <button key={`${command.source}:${command.name}`} type="button" role="option" onMouseDown={(event) => {
+      event.preventDefault();
+      onComplete(`/${command.name} `);
+    }}>
+      <span><strong>/{command.name}</strong>{command.description && <small>{command.description}</small>}</span>
+      <em>{command.source === "client" ? "Pi" : command.source}</em>
+    </button>)}
+  </div>;
+}
+
+function IdleCommandCompletion({ connected }: { connected: boolean }) {
+  const text = useAssistantState((state) => state.composer.text);
+  const api = useAssistantApi();
+  return <CommandCompletion text={text} connected={connected} allowNew onComplete={(value) => api.composer().setText(value)} />;
+}
+
 function ComposerControls({ connected }: { connected: boolean }) {
   const session = useAppStore((state) => state.session);
   const command = useAppStore((state) => state.command);
@@ -88,6 +120,7 @@ function Composer() {
   const connected = useAppStore((s) => s.connectionState === "connected");
   const running = useAssistantState((s) => s.thread.isRunning);
   const command = useAppStore((s) => s.command);
+  const slashCommands = useAppStore((s) => s.session.commands);
   const [guidance, setGuidance] = useState("");
   const [delivery, setDelivery] = useState<"steer" | "follow_up">("steer");
   const [stopping, setStopping] = useState(false);
@@ -96,7 +129,9 @@ function Composer() {
       const message = guidance.trim();
       if (!message) return;
       setGuidance("");
-      void command({ type: delivery, message });
+      const commandName = message.startsWith("/") ? message.slice(1).split(/\s/, 1)[0] : undefined;
+      const slashCommand = slashCommands.find((candidate) => candidate.name === commandName);
+      void command(slashCommand?.source === "extension" ? { type: "prompt", message } : { type: delivery, message });
     };
     const stop = async () => {
       setStopping(true);
@@ -105,6 +140,7 @@ function Composer() {
       finally { setStopping(false); }
     };
     return <div className="composer active-composer">
+      <CommandCompletion text={guidance} connected={connected} allowNew={false} onComplete={setGuidance} />
       <textarea value={guidance} onChange={(e) => setGuidance(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); sendGuidance(); } }} rows={1} placeholder={delivery === "steer" ? "Send guidance during this turn…" : "Queue a follow-up turn…"} />
       <div className="composer-row"><select value={delivery} onChange={(e) => setDelivery(e.target.value as typeof delivery)}><option value="steer">Steer now</option><option value="follow_up">Follow up</option></select><div>
         <button className="stop-button" disabled={!connected || stopping} onClick={() => void stop()} title="Stop Pi"><Square size={11} fill="currentColor" />{stopping ? "Stopping…" : "Stop"}</button>
@@ -113,7 +149,8 @@ function Composer() {
     </div>;
   }
   return <ComposerPrimitive.Root className="composer">
-    <ComposerPrimitive.Input disabled={!connected} autoFocus rows={1} placeholder={connected ? "Ask Pi to make a change…" : "Select a connected instance"} />
+    <IdleCommandCompletion connected={connected} />
+    <ComposerPrimitive.Input disabled={!connected} autoFocus rows={1} placeholder={connected ? "Ask Pi to make a change or type / for commands…" : "Select a connected instance"} />
     <div className="composer-row"><ComposerControls connected={connected} /><div>
       <ComposerPrimitive.Send asChild><button className="send-button" disabled={!connected} title="Send"><ArrowUp size={17} /></button></ComposerPrimitive.Send>
     </div></div>

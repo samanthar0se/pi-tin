@@ -67,6 +67,8 @@ The token is stored in Tauri Store as local application data, not Windows Creden
 ## Chat and reviews
 
 - Send normally while Pi is idle. Sending while it runs is delivered as steering guidance.
+- Type `/` in the composer to discover and invoke the host's current extension, prompt-template, and skill commands.
+- Use **New** or `/new` to start a fresh persistent session; the previous session remains saved on the host.
 - Use Stop to call Pi's abort operation.
 - Model, thinking level, compact, and plan mode act on the remote Pi session.
 - In plan mode, `plannotator_submit_plan` automatically opens the Review tab. Approve, reject, or annotate there; the blocked tool resumes directly from Plannotator.

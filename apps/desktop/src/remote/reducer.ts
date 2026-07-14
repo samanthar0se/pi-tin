@@ -1,4 +1,4 @@
-import type { Snapshot } from "@pi-remote/protocol";
+import type { SlashCommand, Snapshot } from "@pi-remote/protocol";
 import type { ThreadMessageLike } from "@assistant-ui/react";
 
 export type UiMessage = ThreadMessageLike & { id: string };
@@ -9,6 +9,7 @@ export type SessionState = {
   cwd: string;
   model: any | null;
   availableModels: any[];
+  commands: SlashCommand[];
   thinkingLevel: string;
   isRunning: boolean;
   contextUsage: unknown | null;
@@ -17,7 +18,7 @@ export type SessionState = {
 
 export const emptySession: SessionState = {
   messages: [], sessionFile: null, sessionName: null, cwd: "", model: null,
-  availableModels: [], thinkingLevel: "off", isRunning: false, contextUsage: null, planPhase: "idle",
+  availableModels: [], commands: [], thinkingLevel: "off", isRunning: false, contextUsage: null, planPhase: "idle",
 };
 
 function asObject(value: unknown): Record<string, any> {
@@ -87,7 +88,7 @@ export function replaceFromSnapshot(snapshot: Snapshot): SessionState {
   return {
     messages: normalizeEntries(snapshot.entries), sessionFile: snapshot.sessionFile,
     sessionName: snapshot.sessionName, cwd: snapshot.cwd, model: snapshot.model,
-    availableModels: [...snapshot.availableModels], thinkingLevel: snapshot.thinkingLevel,
+    availableModels: [...snapshot.availableModels], commands: [...snapshot.commands], thinkingLevel: snapshot.thinkingLevel,
     isRunning: snapshot.isRunning, contextUsage: snapshot.contextUsage, planPhase: snapshot.planPhase,
   };
 }

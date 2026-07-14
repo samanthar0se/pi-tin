@@ -16,6 +16,10 @@ export function PiRuntimeProvider({ children }: { children: ReactNode }) {
       if (connectionState !== "connected") throw new Error("Connect to a Pi instance before sending.");
       const text = message.content.filter((part) => part.type === "text").map((part) => part.text).join("\n").trim();
       if (!text) return;
+      if (text === "/new") {
+        await command({ type: "new_session" }, 30_000);
+        return;
+      }
       await command({ type: isRunning ? "steer" : "prompt", message: text });
     },
     onCancel: async () => { await command({ type: "abort" }); },

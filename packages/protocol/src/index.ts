@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const PROTOCOL_VERSION = 4 as const;
+export const PROTOCOL_VERSION = 5 as const;
 const requestId = z.string().min(1).max(128);
 const text = z.string().max(2_000_000);
 const commandBase = { id: requestId } as const;
@@ -15,6 +15,7 @@ export const clientCommandSchema = z.discriminatedUnion("type", [
   z.object({ ...commandBase, type: z.literal("follow_up"), message: text }).strict(),
   z.object({ ...commandBase, type: z.literal("abort") }).strict(),
   z.object({ ...commandBase, type: z.literal("restart_pi") }).strict(),
+  z.object({ ...commandBase, type: z.literal("new_session") }).strict(),
   z.object({ ...commandBase, type: z.literal("set_model"), provider: z.string().min(1), modelId: z.string().min(1) }).strict(),
   z.object({ ...commandBase, type: z.literal("set_thinking"), level: z.enum(["off", "minimal", "low", "medium", "high", "xhigh", "max"]) }).strict(),
   z.object({ ...commandBase, type: z.literal("compact"), customInstructions: z.string().max(20_000).optional() }).strict(),
@@ -28,10 +29,15 @@ export const modelSchema = z.object({
   provider: z.string(), id: z.string(), name: z.string().optional(), contextWindow: z.number().optional(),
 }).passthrough();
 
+export const slashCommandSchema = z.object({
+  name: z.string().min(1), description: z.string().optional(),
+  source: z.enum(["extension", "prompt", "skill"]), scope: z.enum(["user", "project", "temporary"]),
+}).strict();
+
 export const snapshotSchema = z.object({
   type: z.literal("snapshot"), version: z.literal(PROTOCOL_VERSION), sessionFile: z.string().nullable(),
   sessionName: z.string().nullable(), cwd: z.string(), entries: z.array(z.unknown()), model: modelSchema.nullable(),
-  availableModels: z.array(modelSchema), thinkingLevel: z.string(), isRunning: z.boolean(),
+  availableModels: z.array(modelSchema), commands: z.array(slashCommandSchema), thinkingLevel: z.string(), isRunning: z.boolean(),
   contextUsage: z.unknown().nullable(), planPhase: z.enum(["idle", "planning", "executing", "reviewing"]).default("idle"),
 }).strict();
 
@@ -63,6 +69,7 @@ export type ClientCommand = z.infer<typeof clientCommandSchema>;
 export type ClientCommandInput = ClientCommand extends infer C ? C extends { id: string } ? Omit<C, "id"> : never : never;
 export type ClientMessage = z.infer<typeof clientMessageSchema>;
 export type Snapshot = z.infer<typeof snapshotSchema>;
+export type SlashCommand = z.infer<typeof slashCommandSchema>;
 export type ServerMessage = z.infer<typeof serverMessageSchema>;
 export type PiEvent = z.infer<typeof eventMessageSchema>["event"];
 export type ReviewStarted = z.infer<typeof reviewStartedSchema>;

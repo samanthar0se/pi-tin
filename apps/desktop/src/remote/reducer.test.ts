@@ -5,7 +5,8 @@ import { emptySession, reducePiEvent, replaceFromSnapshot } from "./reducer";
 const snapshot = (name: string, text: string) => ({
   type: "snapshot" as const, version: PROTOCOL_VERSION, sessionFile: `${name}.jsonl`, sessionName: name, cwd: `/work/${name}`,
   entries: [{ type: "message", id: `${name}-1`, message: { role: "user", content: text } }], model: null,
-  availableModels: [], thinkingLevel: "off", isRunning: false, contextUsage: null, planPhase: "idle" as const,
+  availableModels: [], commands: [{ name: "skill:test", description: "Test skill", source: "skill" as const, scope: "user" as const }],
+  thinkingLevel: "off", isRunning: false, contextUsage: null, planPhase: "idle" as const,
 });
 
 describe("Pi state reduction", () => {
@@ -28,5 +29,6 @@ describe("Pi state reduction", () => {
     expect(before.messages[0]!.content).not.toEqual(after.messages[0]!.content);
     expect(after.messages).toHaveLength(1);
     expect(after.sessionName).toBe("new");
+    expect(after.commands[0]?.name).toBe("skill:test");
   });
 });

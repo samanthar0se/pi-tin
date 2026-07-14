@@ -121,6 +121,13 @@ main { min-width: 0; min-height: 0; height: 100%; display: flex; flex-direction:
 .composer-footer { position: sticky; bottom: 0; margin-top: auto; padding: 20px 0 26px; background: linear-gradient(transparent, var(--bg) 24%); }
 .composer { position: relative; padding: 12px 12px 9px; border: 1px solid var(--line-strong); border-radius: 22px; background: var(--bg); box-shadow: 0 8px 28px #0000000a, 0 2px 8px #0000000a; }
 .composer:focus-within { border-color: #b7b7b7; box-shadow: 0 8px 30px #00000010, 0 0 0 1px var(--line); }
+.command-completion { position: absolute; z-index: 10; left: 0; right: 0; bottom: calc(100% + 8px); max-height: 260px; padding: 6px; overflow-y: auto; border: 1px solid var(--line-strong); border-radius: 14px; background: var(--bg); box-shadow: 0 14px 40px #0002; }
+.command-completion button { width: 100%; padding: 8px 10px; display: flex; align-items: center; gap: 12px; border: 0; border-radius: 9px; background: transparent; cursor: pointer; text-align: left; }
+.command-completion button:hover { background: var(--panel); }
+.command-completion button > span { min-width: 0; display: flex; flex: 1; flex-direction: column; gap: 2px; }
+.command-completion strong { overflow: hidden; text-overflow: ellipsis; color: var(--text); font: 600 12px var(--font-mono); }
+.command-completion small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 10px; }
+.command-completion em { flex: none; color: var(--muted); font-size: 9px; font-style: normal; text-transform: capitalize; }
 .composer textarea { width: 100%; min-height: 48px; max-height: 190px; resize: none; border: 0; outline: 0; padding: 2px 5px 10px; color: var(--text); background: transparent; font-size: 15px; line-height: 1.5; }
 .composer textarea::placeholder { color: #8e8e8e; }
 .composer-row { min-height: 32px; padding-left: 2px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }

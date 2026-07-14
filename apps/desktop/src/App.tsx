@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Archive, Code2, Moon, Settings, Sun, Unplug, Zap } from "lucide-react";
+import { Archive, Code2, FilePlus2, Moon, Settings, Sun, Unplug, Zap } from "lucide-react";
 import { Toaster, toast } from "sonner";
 import { HostSettingsDialog } from "./components/HostSettingsDialog";
 import { Thread } from "./components/assistant-ui/Thread";
@@ -26,6 +26,17 @@ export default function App() {
 
   const run = (label: string, promise: Promise<unknown>) => toast.promise(promise, { loading: label, success: `${label} requested`, error: (caught) => caught.message });
   const connected = state === "connected";
+  const startNewSession = async () => {
+    if (!window.confirm("Start a new Pi session? The current session will remain saved on the host.")) return;
+    const toastId = toast.loading("Starting new session…");
+    try {
+      const result = await command({ type: "new_session" }, 30_000) as { cancelled?: boolean };
+      if (result.cancelled) toast.error("New session was cancelled", { id: toastId });
+      else toast.success("New session started", { id: toastId });
+    } catch (caught) {
+      toast.error(caught instanceof Error ? caught.message : "Could not start a new session", { id: toastId });
+    }
+  };
 
   return <div className="app-shell">
     <main>
@@ -34,6 +45,7 @@ export default function App() {
         <div className="session-heading"><strong>{session.sessionName || "Remote Pi session"}</strong><span title={session.cwd || undefined}>{session.cwd || (profile ? "Waiting for Pi…" : "Configure the connection in Settings")}</span></div>
         <div className="top-actions">
           <div className={`connection-pill ${state}`} title={detail}><i />{state}</div>
+          <button disabled={!connected || session.isRunning || Boolean(review)} onClick={() => void startNewSession()}><FilePlus2 size={15} /> New</button>
           <button disabled={!connected} className={session.planPhase !== "idle" ? "active-control" : ""} onClick={() => run("Plan mode", command({ type: "set_plan_mode", mode: session.planPhase === "idle" ? "enter" : "exit" }))}><Zap size={15} /> Plan</button>
           <button disabled={!connected || Boolean(review)} onClick={() => run("Code review", command({ type: "start_code_review" }))}><Code2 size={15} /> Review</button>
           <button className="icon-button" disabled={!connected || session.isRunning} onClick={() => run("Compact", command({ type: "compact" }))} title="Compact context"><Archive size={16} /></button>

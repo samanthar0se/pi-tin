@@ -70,6 +70,7 @@ export class HostController implements HostBackend {
 
   async handle(command: ClientCommand): Promise<{ data?: unknown }> {
     if (command.type === "restart_pi") return { data: await this.restartRpc() };
+    if (command.type === "new_session") return { data: await this.newSession() };
     const rpc = this.requireRpc();
     switch (command.type) {
       case "prompt": await rpc.prompt(command.message); return {};
@@ -82,6 +83,21 @@ export class HostController implements HostBackend {
       case "set_plan_mode": return { data: await this.setPlanMode(command.mode) };
       case "start_code_review": return { data: await this.startCodeReview() };
     }
+  }
+
+  private async newSession(): Promise<{ cancelled: boolean; sessionFile: string | null }> {
+    if (this.running) throw new Error("Stop Pi before starting a new session.");
+    if (this.review.active) throw new Error("Finish the active review before starting a new session.");
+    const result = await this.requireRpc().newSession();
+    if (result.cancelled) return { cancelled: true, sessionFile: this.activePath };
+    this.running = false;
+    this.planPhase = "idle";
+    const state = await this.requireRpc().getState();
+    this.activePath = state.sessionFile || null;
+    this.persist();
+    this.emitHostState();
+    this.emit(await this.snapshot());
+    return { cancelled: false, sessionFile: this.activePath };
   }
 
   private async restartRpc(): Promise<{ sessionFile: string | null }> {
@@ -180,7 +196,7 @@ export class HostController implements HostBackend {
 
   private async snapshot(): Promise<Snapshot> {
     const rpc = this.requireRpc();
-    const [state, entries, models] = await Promise.all([rpc.getState(), rpc.getEntries(), rpc.getAvailableModels()]);
+    const [state, entries, models, commands] = await Promise.all([rpc.getState(), rpc.getEntries(), rpc.getAvailableModels(), rpc.getCommands()]);
     let contextUsage: unknown = null;
     try { contextUsage = (await rpc.getSessionStats()).contextUsage ?? null; } catch {}
     this.activePath = state.sessionFile || this.activePath;
@@ -188,6 +204,7 @@ export class HostController implements HostBackend {
     return {
       type: "snapshot", version: PROTOCOL_VERSION, sessionFile: state.sessionFile || null, sessionName: state.sessionName || null,
       cwd: this.cwd, entries: entries.entries, model: (state.model as any) || null, availableModels: models as any[],
+      commands: commands.map((command) => ({ name: command.name, description: command.description, source: command.source, scope: command.sourceInfo.scope })),
       thinkingLevel: state.thinkingLevel, isRunning: state.isStreaming, contextUsage, planPhase: this.planPhase,
     };
   }
