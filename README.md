@@ -6,7 +6,7 @@ A small Windows desktop client for controlling persistent [Pi](https://github.co
 
 - Exactly one host connection and up to five persistent Pi RPC sessions; compact tabs switch between open sessions without adding a host or saved-session browser.
 - A foreground host controller owns the RPC child process. It is not a system service and does not use SSH.
-- Simultaneous agents may use different working directories. Saved-session browsing, file management, attachments, and cloud services remain intentionally out of scope.
+- Simultaneous agents may use different working directories. Saved-session browsing, file management, non-image attachments, and cloud services remain intentionally out of scope.
 - Control traffic is token-authenticated but uses plain WebSocket on the LAN.
 - Plannotator's transient review port remains unauthenticated upstream. Restrict both ports with the host firewall and do not expose them to the internet.
 
@@ -72,6 +72,7 @@ The token is stored in Tauri Store as local application data, not Windows Creden
 - Use the compact session tabs to switch between up to five independently running Pi sessions. Closing a tab stops that runtime but keeps its native Pi transcript on the host.
 - **New** opens another runtime with its own working directory. `/new` starts a fresh transcript inside the selected runtime.
 - Send normally while the selected Pi session is idle. Sending while it runs is delivered as steering guidance.
+- Paste PNG, JPEG, GIF, or WebP images into either composer to preview and send them with a prompt or guidance.
 - Type `/` in the composer to discover and invoke the host's current extension, prompt-template, and skill commands.
 - Use Stop to call Pi's abort operation.
 - Model, thinking level, compact, and plan mode act on the remote Pi session.

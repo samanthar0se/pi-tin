@@ -54,4 +54,20 @@ describe("Pi state reduction", () => {
     const state = reducePiEvent(emptySession, { type: "context_usage", contextUsage });
     expect(state.contextUsage).toEqual(contextUsage);
   });
+
+  it("preserves user image content for display", () => {
+    const state = replaceFromSnapshot({
+      ...snapshot("image", "ignored"),
+      entries: [{
+        type: "message", id: "image-1", message: { role: "user", content: [
+          { type: "text", text: "What is this?" },
+          { type: "image", data: "aGVsbG8=", mimeType: "image/png" },
+        ] },
+      }],
+    });
+    expect(state.messages[0]!.content).toEqual([
+      { type: "text", text: "What is this?" },
+      { type: "image", image: "data:image/png;base64,aGVsbG8=" },
+    ]);
+  });
 });

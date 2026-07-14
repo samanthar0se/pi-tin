@@ -6,6 +6,9 @@ describe("protocol validation", () => {
     expect(clientMessageSchema.parse({ type: "auth", version: PROTOCOL_VERSION, token: "secret" }).type).toBe("auth");
     expect(clientMessageSchema.parse({ type: "create_session", id: "r0", cwd: "/work/project" }).type).toBe("create_session");
     expect(clientMessageSchema.parse({ type: "prompt", id: "r1", sessionId: "s1", message: "hello" }).type).toBe("prompt");
+    expect(clientMessageSchema.parse({
+      type: "prompt", id: "r1-image", sessionId: "s1", message: "", images: [{ type: "image", data: "aGVsbG8=", mimeType: "image/png" }],
+    }).type).toBe("prompt");
     expect(clientMessageSchema.parse({ type: "restart_pi", id: "r2", sessionId: "s1" }).type).toBe("restart_pi");
     expect(clientMessageSchema.parse({ type: "new_session", id: "r3", sessionId: "s1" }).type).toBe("new_session");
     expect(clientMessageSchema.parse({ type: "extension_ui_response", id: "r4", sessionId: "s1", uiRequestId: "ui-1", value: "Option A" }).type).toBe("extension_ui_response");
@@ -15,6 +18,9 @@ describe("protocol validation", () => {
     expect(clientMessageSchema.safeParse({ type: "abort" }).success).toBe(false);
     expect(clientMessageSchema.safeParse({ type: "shell", id: "r1", command: "rm -rf /" }).success).toBe(false);
     expect(clientMessageSchema.safeParse({ type: "prompt", id: "r2", message: "missing routing" }).success).toBe(false);
+    expect(clientMessageSchema.safeParse({
+      type: "prompt", id: "r2-image", sessionId: "s1", message: "image", images: [{ type: "image", data: "data:image/svg+xml;base64,PHN2Zz4=", mimeType: "image/svg+xml" }],
+    }).success).toBe(false);
     expect(clientMessageSchema.safeParse({ type: "switch_session", id: "r3", sessionId: "opaque" }).success).toBe(false);
     expect(() => parseServerMessage({ type: "snapshot", version: 99 })).toThrow();
   });

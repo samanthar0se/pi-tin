@@ -1,14 +1,16 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ClipboardEvent as ReactClipboardEvent, type ReactNode } from "react";
 import {
   ActionBarPrimitive,
+  AttachmentPrimitive,
   ComposerPrimitive,
   MessagePrimitive,
   ThreadPrimitive,
   useAssistantApi,
   useAssistantState,
+  type ImageMessagePartProps,
 } from "@assistant-ui/react";
-import { ArrowDown, ArrowUp, Brain, Check, ChevronDown, Copy, LoaderCircle, Sparkles, Square } from "lucide-react";
-import type { SlashCommand } from "@pi-tin/protocol";
+import { ArrowDown, ArrowUp, Brain, Check, ChevronDown, Copy, LoaderCircle, Sparkles, Square, X } from "lucide-react";
+import type { ImageInput, SlashCommand } from "@pi-tin/protocol";
 import { toast } from "sonner";
 import { MarkdownText } from "./MarkdownText";
 import { ToolCard } from "./ToolCard";
@@ -43,8 +45,66 @@ function ThreadMessage() {
 
 function UserMessage() {
   return <MessagePrimitive.Root className="message user-message">
-    <div className="user-bubble"><MessagePrimitive.Parts /></div>
+    <div className="user-bubble"><MessagePrimitive.Parts components={{ Image: MessageImage }} /></div>
   </MessagePrimitive.Root>;
+}
+
+function MessageImage({ image, filename }: ImageMessagePartProps) {
+  return <img className="message-image" src={image} alt={filename || "Shared image"} />;
+}
+
+function ComposerImageAttachment() {
+  const file = useAssistantState((state) => state.attachment.file);
+  const name = useAssistantState((state) => state.attachment.name);
+  const [preview, setPreview] = useState("");
+  useEffect(() => {
+    if (!file) return setPreview("");
+    const reader = new FileReader();
+    reader.onload = () => setPreview(String(reader.result || ""));
+    reader.readAsDataURL(file);
+    return () => reader.abort();
+  }, [file]);
+  return <AttachmentPrimitive.Root className="composer-image" title={name}>
+    {preview && <img src={preview} alt={name} />}
+    <AttachmentPrimitive.Remove asChild><button type="button" title={`Remove ${name}`}><X size={13} /></button></AttachmentPrimitive.Remove>
+  </AttachmentPrimitive.Root>;
+}
+
+function ComposerImages() {
+  const count = useAssistantState((state) => state.composer.attachments.length);
+  return count > 0 ? <div className="composer-images"><ComposerPrimitive.Attachments components={{ Image: ComposerImageAttachment }} /></div> : null;
+}
+
+type PastedImage = ImageInput & { id: string; name: string; preview: string };
+const supportedImageTypes = new Set<ImageInput["mimeType"]>(["image/png", "image/jpeg", "image/gif", "image/webp"]);
+
+function readPastedImage(file: File): Promise<PastedImage> {
+  return new Promise((resolve, reject) => {
+    if (!supportedImageTypes.has(file.type as ImageInput["mimeType"])) {
+      reject(new Error("Paste a PNG, JPEG, GIF, or WebP image."));
+      return;
+    }
+    if (file.size > 3_538_944) {
+      reject(new Error("Images must be smaller than 3.4 MB."));
+      return;
+    }
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error(`Could not read ${file.name || "the pasted image"}.`));
+    reader.onload = () => {
+      const preview = String(reader.result || "");
+      const data = preview.slice(preview.indexOf(",") + 1);
+      resolve({ type: "image", data, mimeType: file.type as ImageInput["mimeType"], id: crypto.randomUUID(), name: file.name || "Pasted image", preview });
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function GuidanceImages({ images, onRemove }: { images: PastedImage[]; onRemove: (id: string) => void }) {
+  if (images.length === 0) return null;
+  return <div className="composer-images">{images.map((image) => <div className="composer-image" key={image.id} title={image.name}>
+    <img src={image.preview} alt={image.name} />
+    <button type="button" title={`Remove ${image.name}`} onClick={() => onRemove(image.id)}><X size={13} /></button>
+  </div>)}</div>;
 }
 
 function Reasoning({ text }: { text: string }) {
@@ -201,16 +261,31 @@ function Composer() {
   const command = useAppStore((s) => s.command);
   const slashCommands = useAppStore((s) => s.session.commands);
   const [guidance, setGuidance] = useState("");
+  const [guidanceImages, setGuidanceImages] = useState<PastedImage[]>([]);
   const [delivery, setDelivery] = useState<"steer" | "follow_up">("steer");
   const [stopping, setStopping] = useState(false);
   if (running) {
     const sendGuidance = () => {
       const message = guidance.trim();
-      if (!message) return;
+      if (!message && guidanceImages.length === 0) return;
       setGuidance("");
+      setGuidanceImages([]);
       const commandName = message.startsWith("/") ? message.slice(1).split(/\s/, 1)[0] : undefined;
       const slashCommand = slashCommands.find((candidate) => candidate.name === commandName);
-      void command(slashCommand?.source === "extension" ? { type: "prompt", message } : { type: delivery, message });
+      const images = guidanceImages.map(({ type, data, mimeType }) => ({ type, data, mimeType }));
+      void command(slashCommand?.source === "extension"
+        ? { type: "prompt", message, images: images.length ? images : undefined }
+        : { type: delivery, message, images: images.length ? images : undefined });
+    };
+    const pasteImages = (event: ReactClipboardEvent<HTMLTextAreaElement>) => {
+      const files = Array.from(event.clipboardData.files).filter((file) => file.type.startsWith("image/"));
+      if (files.length === 0) return;
+      event.preventDefault();
+      const available = Math.max(0, 10 - guidanceImages.length);
+      if (files.length > available) toast.error("You can send up to 10 images at once.");
+      void Promise.all(files.slice(0, available).map(readPastedImage))
+        .then((images) => setGuidanceImages((current) => [...current, ...images]))
+        .catch((error) => toast.error(error instanceof Error ? error.message : "Could not paste image"));
     };
     const stop = async () => {
       setStopping(true);
@@ -220,17 +295,19 @@ function Composer() {
     };
     return <div className="composer active-composer">
       <CommandCompletion text={guidance} connected={connected} allowNew={false} onComplete={setGuidance} />
-      <textarea value={guidance} onChange={(e) => setGuidance(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); sendGuidance(); } }} rows={1} placeholder={delivery === "steer" ? "Send guidance during this turn…" : "Queue a follow-up turn…"} />
+      <GuidanceImages images={guidanceImages} onRemove={(id) => setGuidanceImages((images) => images.filter((image) => image.id !== id))} />
+      <textarea value={guidance} onChange={(e) => setGuidance(e.target.value)} onPaste={pasteImages} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); sendGuidance(); } }} rows={1} placeholder={delivery === "steer" ? "Send guidance or paste an image…" : "Queue a follow-up or paste an image…"} />
       <div className="composer-row"><select value={delivery} onChange={(e) => setDelivery(e.target.value as typeof delivery)}><option value="steer">Steer now</option><option value="follow_up">Follow up</option></select><div>
         <ContextWindowIndicator />
         <button className="stop-button" disabled={!connected || stopping} onClick={() => void stop()} title="Stop Pi"><Square size={11} fill="currentColor" />{stopping ? "Stopping…" : "Stop"}</button>
-        <button className="send-button" disabled={!connected || !guidance.trim()} onClick={sendGuidance} title="Send guidance"><ArrowUp size={17} /></button>
+        <button className="send-button" disabled={!connected || (!guidance.trim() && guidanceImages.length === 0)} onClick={sendGuidance} title="Send guidance"><ArrowUp size={17} /></button>
       </div></div>
     </div>;
   }
   return <ComposerPrimitive.Root className="composer">
     <IdleCommandCompletion connected={connected} />
-    <ComposerPrimitive.Input disabled={!connected} autoFocus rows={1} placeholder={connected ? "Ask Pi to make a change or type / for commands…" : "Select a connected instance"} />
+    <ComposerImages />
+    <ComposerPrimitive.Input disabled={!connected} autoFocus rows={1} placeholder={connected ? "Ask Pi to make a change, paste an image, or type /…" : "Select a connected instance"} />
     <div className="composer-row"><ComposerControls connected={connected} /><div>
       <ContextWindowIndicator />
       <ComposerPrimitive.Send asChild><button className="send-button" disabled={!connected} title="Send"><ArrowUp size={17} /></button></ComposerPrimitive.Send>

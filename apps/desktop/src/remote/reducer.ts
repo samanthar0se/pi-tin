@@ -33,6 +33,9 @@ function contentParts(message: any): any[] {
   if (!Array.isArray(content)) return [];
   return content.flatMap((part: any): any[] => {
     if (part?.type === "text") return [{ type: "text", text: String(part.text || "") }];
+    if (part?.type === "image" && typeof part.data === "string" && typeof part.mimeType === "string") {
+      return [{ type: "image", image: `data:${part.mimeType};base64,${part.data}` }];
+    }
     if (part?.type === "thinking" || part?.type === "reasoning") return [{ type: "reasoning", text: String(part.thinking ?? part.text ?? "") }];
     if (part?.type === "toolCall" || part?.type === "tool-call") return [{
       type: "tool-call", toolCallId: String(part.id ?? part.toolCallId ?? ""),

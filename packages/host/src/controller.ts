@@ -198,9 +198,9 @@ class PiSessionRuntime {
     if (command.type === "extension_ui_response") { await this.respondToExtensionUi(command); return {}; }
     const rpc = this.requireRpc();
     switch (command.type) {
-      case "prompt": await rpc.prompt(command.message); return {};
-      case "steer": await rpc.steer(command.message); return {};
-      case "follow_up": await rpc.followUp(command.message); return {};
+      case "prompt": await rpc.prompt(command.message, command.images); return {};
+      case "steer": await rpc.steer(command.message, command.images); return {};
+      case "follow_up": await rpc.followUp(command.message, command.images); return {};
       case "abort": await rpc.abort(); return {};
       case "set_model": return { data: await rpc.setModel(command.provider, command.modelId) };
       case "set_thinking": await rpc.setThinkingLevel(command.level as any); return { data: { level: command.level } };

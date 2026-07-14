@@ -1,9 +1,15 @@
 import { z } from "zod";
 
-export const PROTOCOL_VERSION = 7 as const;
+export const PROTOCOL_VERSION = 8 as const;
 const requestId = z.string().min(1).max(128);
 const sessionId = z.string().min(1).max(128);
 const text = z.string().max(2_000_000);
+const image = z.object({
+  type: z.literal("image"),
+  data: z.string().min(1).max(4_718_592),
+  mimeType: z.enum(["image/png", "image/jpeg", "image/gif", "image/webp"]),
+}).strict();
+const images = z.array(image).max(10).optional();
 const commandBase = { id: requestId } as const;
 const sessionCommandBase = { ...commandBase, sessionId } as const;
 
@@ -14,9 +20,9 @@ export const authMessageSchema = z.object({
 export const clientCommandSchema = z.discriminatedUnion("type", [
   z.object({ ...commandBase, type: z.literal("create_session"), cwd: z.string().min(1).max(32_768) }).strict(),
   z.object({ ...sessionCommandBase, type: z.literal("close_session") }).strict(),
-  z.object({ ...sessionCommandBase, type: z.literal("prompt"), message: text }).strict(),
-  z.object({ ...sessionCommandBase, type: z.literal("steer"), message: text }).strict(),
-  z.object({ ...sessionCommandBase, type: z.literal("follow_up"), message: text }).strict(),
+  z.object({ ...sessionCommandBase, type: z.literal("prompt"), message: text, images }).strict(),
+  z.object({ ...sessionCommandBase, type: z.literal("steer"), message: text, images }).strict(),
+  z.object({ ...sessionCommandBase, type: z.literal("follow_up"), message: text, images }).strict(),
   z.object({ ...sessionCommandBase, type: z.literal("abort") }).strict(),
   z.object({ ...sessionCommandBase, type: z.literal("restart_pi") }).strict(),
   z.object({ ...sessionCommandBase, type: z.literal("new_session") }).strict(),
@@ -100,6 +106,7 @@ export type SessionCommandInput = ClientCommand extends infer C ? C extends { id
 export type ClientMessage = z.infer<typeof clientMessageSchema>;
 export type ContextUsage = z.infer<typeof contextUsageSchema>;
 export type ExtensionUiRequest = z.infer<typeof extensionUiRequestSchema>;
+export type ImageInput = z.infer<typeof image>;
 export type SessionDescriptor = z.infer<typeof sessionDescriptorSchema>;
 export type Snapshot = z.infer<typeof snapshotSchema>;
 export type SlashCommand = z.infer<typeof slashCommandSchema>;
