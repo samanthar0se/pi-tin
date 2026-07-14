@@ -78,7 +78,7 @@ export class PiConnection {
       if (generation !== this.generation) return;
       try {
         const message = parseServerMessage(JSON.parse(String(event.data)));
-        if (message.type === "snapshot") {
+        if (message.type === "session_list" || message.type === "snapshot") {
           this.reconnectAttempt = 0;
           this.hooks.onState("connected");
         }

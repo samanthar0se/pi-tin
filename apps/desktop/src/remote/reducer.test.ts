@@ -3,7 +3,7 @@ import { PROTOCOL_VERSION } from "@pi-tin/protocol";
 import { emptySession, reducePiEvent, replaceFromSnapshot } from "./reducer";
 
 const snapshot = (name: string, text: string) => ({
-  type: "snapshot" as const, version: PROTOCOL_VERSION, sessionFile: `${name}.jsonl`, sessionName: name, cwd: `/work/${name}`,
+  type: "snapshot" as const, version: PROTOCOL_VERSION, sessionId: name, sessionFile: `${name}.jsonl`, sessionName: name, cwd: `/work/${name}`,
   entries: [{ type: "message", id: `${name}-1`, message: { role: "user", content: text } }], model: null,
   availableModels: [], commands: [{ name: "skill:test", description: "Test skill", source: "skill" as const, scope: "user" as const }],
   thinkingLevel: "off", isRunning: false, contextUsage: null, planPhase: "idle" as const,

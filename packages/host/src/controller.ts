@@ -1,31 +1,35 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { existsSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, resolve } from "node:path";
+import { dirname, isAbsolute, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { RpcClient, type RpcExtensionUIResponse } from "@earendil-works/pi-coding-agent";
-import { PROTOCOL_VERSION, type ClientCommand, type ExtensionUiRequest, type ServerMessage, type Snapshot } from "@pi-tin/protocol";
+import {
+  PROTOCOL_VERSION,
+  type ClientCommand,
+  type ExtensionUiRequest,
+  type ServerMessage,
+  type SessionDescriptor,
+  type Snapshot,
+} from "@pi-tin/protocol";
 import { createTokenStore } from "../../pi-tin/token-store.ts";
 import { ReviewTracker } from "./plannotator.ts";
 import type { HostBackend } from "./types.ts";
 
 const PLAN_TOOL = "plannotator_submit_plan";
+const MAX_SESSIONS = 5;
 const agentDir = process.env.PI_CODING_AGENT_DIR || resolve(homedir(), ".pi", "agent");
 const statePath = resolve(agentDir, "pi-tin-host.json");
 const legacyStatePath = resolve(agentDir, "pi-remote-host.json");
+const defaultCwd = process.env.PI_TIN_CWD || process.env.PI_REMOTE_CWD || process.cwd();
 
 type RpcStatus = "starting" | "ready" | "error" | "stopped";
+type PersistedSession = { id: string; cwd: string; sessionPath?: string | null };
+type SessionCommand = Exclude<ClientCommand, { type: "create_session" | "close_session" }>;
 
 export class HostController implements HostBackend {
-  private rpc: RpcClient | null = null;
   private listeners = new Set<(message: ServerMessage) => void>();
-  private activePath: string | null = null;
-  private cwd = process.env.PI_TIN_CWD || process.env.PI_REMOTE_CWD || process.cwd();
-  private running = false;
-  private rpcStatus: RpcStatus = "stopped";
-  private planPhase: Snapshot["planPhase"] = "idle";
-  private healthTimer: NodeJS.Timeout | null = null;
-  private recovering = false;
-  private pendingUiRequest: ExtensionUiRequest | null = null;
+  private sessions = new Map<string, PiSessionRuntime>();
   readonly tokenStore = createTokenStore();
   readonly review: ReviewTracker;
 
@@ -33,7 +37,8 @@ export class HostController implements HostBackend {
     const port = Number(process.env.PLANNOTATOR_PORT || 19432);
     this.review = new ReviewTracker(`http://localhost:${port}`, (message) => {
       this.emit(message);
-      this.emitHostState();
+      this.sessions.get(message.sessionId)?.emitHostState();
+      this.emitSessionList();
     });
   }
 
@@ -52,9 +57,120 @@ export class HostController implements HostBackend {
 
   async start(): Promise<void> {
     const saved = readHostState();
-    this.cwd = saved.cwd && existsSync(saved.cwd) ? saved.cwd : this.cwd;
-    await this.startRpc(this.cwd, saved.sessionPath && existsSync(saved.sessionPath) ? saved.sessionPath : undefined);
+    const records = saved.length > 0 ? saved.slice(0, MAX_SESSIONS) : [{ id: randomUUID(), cwd: normalizeCwd(defaultCwd) }];
+    for (const record of records) {
+      if (this.sessions.has(record.id)) continue;
+      this.sessions.set(record.id, this.createRuntime(record));
+    }
+    await Promise.allSettled([...this.sessions.values()].map((session) => session.start()));
+    this.persist();
+  }
+
+  async stop(): Promise<void> {
+    await Promise.allSettled([...this.sessions.values()].map((session) => session.stop()));
+  }
+
+  async initialMessages(): Promise<ServerMessage[]> {
+    const messages: ServerMessage[] = [this.sessionList()];
+    for (const session of this.sessions.values()) messages.push(...await session.initialMessages());
+    return messages;
+  }
+
+  async handle(command: ClientCommand): Promise<{ data?: unknown }> {
+    if (command.type === "create_session") return { data: await this.createSession(command.cwd) };
+    if (command.type === "close_session") return { data: await this.closeSession(command.sessionId) };
+    const session = this.sessions.get(command.sessionId);
+    if (!session) throw new Error("This Pi session is no longer open.");
+    return session.handle(command);
+  }
+
+  private async createSession(cwdInput: string): Promise<{ sessionId: string }> {
+    if (this.sessions.size >= MAX_SESSIONS) throw new Error(`Pi Tin supports up to ${MAX_SESSIONS} open sessions.`);
+    const record = { id: randomUUID(), cwd: normalizeCwd(cwdInput) };
+    const session = this.createRuntime(record);
+    this.sessions.set(record.id, session);
+    this.persist();
+    this.emitSessionList();
+    try {
+      await session.start();
+      this.emitSessionList();
+      return { sessionId: record.id };
+    } catch (error) {
+      await session.stop();
+      this.sessions.delete(record.id);
+      this.persist();
+      this.emitSessionList();
+      throw error;
+    }
+  }
+
+  private async closeSession(sessionId: string): Promise<{ sessionId: string }> {
+    const session = this.sessions.get(sessionId);
+    if (!session) throw new Error("This Pi session is no longer open.");
+    session.assertClosable();
+    await session.stop();
+    this.sessions.delete(sessionId);
+    this.persist();
+    this.emitSessionList();
+    return { sessionId };
+  }
+
+  private createRuntime(record: PersistedSession): PiSessionRuntime {
+    return new PiSessionRuntime(
+      record.id,
+      record.cwd,
+      record.sessionPath || null,
+      this.review,
+      (message) => this.emit(message),
+      () => { this.persist(); this.emitSessionList(); },
+    );
+  }
+
+  private sessionList(): ServerMessage {
+    return {
+      type: "session_list",
+      version: PROTOCOL_VERSION,
+      sessions: [...this.sessions.values()].map((session) => session.descriptor()),
+      maxSessions: MAX_SESSIONS,
+    };
+  }
+
+  private emitSessionList(): void { this.emit(this.sessionList()); }
+  private emit(message: ServerMessage): void { for (const listener of this.listeners) listener(message); }
+
+  private persist(): void {
+    mkdirSync(dirname(statePath), { recursive: true });
+    const sessions = [...this.sessions.values()].map((session) => session.persisted());
+    writeFileSync(statePath, JSON.stringify({ version: 2, sessions }, null, 2));
+  }
+}
+
+class PiSessionRuntime {
+  private rpc: RpcClient | null = null;
+  private activePath: string | null;
+  private sessionName: string | null = null;
+  private running = false;
+  private rpcStatus: RpcStatus = "stopped";
+  private planPhase: Snapshot["planPhase"] = "idle";
+  private healthTimer: NodeJS.Timeout | null = null;
+  private recovering = false;
+  private pendingUiRequest: ExtensionUiRequest | null = null;
+
+  constructor(
+    readonly id: string,
+    readonly cwd: string,
+    sessionPath: string | null,
+    private review: ReviewTracker,
+    private emit: (message: ServerMessage) => void,
+    private persistAll: () => void,
+  ) {
+    this.activePath = sessionPath;
+  }
+
+  async start(): Promise<void> {
+    await this.startRpc(this.cwd, this.activePath && existsSync(this.activePath) ? this.activePath : undefined);
     this.healthTimer = setInterval(() => void this.checkRpcHealth(), 5_000);
+    this.emit(await this.snapshot());
   }
 
   async stop(): Promise<void> {
@@ -68,10 +184,15 @@ export class HostController implements HostBackend {
   }
 
   async initialMessages(): Promise<ServerMessage[]> {
-    return [this.hostState(), await this.snapshot(), ...(this.pendingUiRequest ? [this.pendingUiRequest] : [])];
+    const messages: ServerMessage[] = [this.hostState()];
+    if (this.rpcStatus === "ready") {
+      try { messages.push(await this.snapshot()); } catch {}
+    }
+    if (this.pendingUiRequest) messages.push(this.pendingUiRequest);
+    return messages;
   }
 
-  async handle(command: ClientCommand): Promise<{ data?: unknown }> {
+  async handle(command: SessionCommand): Promise<{ data?: unknown }> {
     if (command.type === "restart_pi") return { data: await this.restartRpc() };
     if (command.type === "new_session") return { data: await this.newSession() };
     if (command.type === "extension_ui_response") { await this.respondToExtensionUi(command); return {}; }
@@ -89,16 +210,38 @@ export class HostController implements HostBackend {
     }
   }
 
+  descriptor(): SessionDescriptor {
+    return {
+      sessionId: this.id,
+      sessionFile: this.activePath,
+      sessionName: this.sessionName,
+      cwd: this.cwd,
+      rpcStatus: this.rpcStatus,
+      isRunning: this.running,
+      activeReviewId: this.review.active?.sessionId === this.id ? this.review.active.id : null,
+    };
+  }
+
+  persisted(): PersistedSession { return { id: this.id, cwd: this.cwd, sessionPath: this.activePath }; }
+
+  assertClosable(): void {
+    if (this.running) throw new Error("Stop Pi before closing this session.");
+    if (this.review.active?.sessionId === this.id) throw new Error("Finish the active review before closing this session.");
+  }
+
+  emitHostState(): void { this.emit(this.hostState()); }
+
   private async newSession(): Promise<{ cancelled: boolean; sessionFile: string | null }> {
     if (this.running) throw new Error("Stop Pi before starting a new session.");
-    if (this.review.active) throw new Error("Finish the active review before starting a new session.");
+    if (this.review.active?.sessionId === this.id) throw new Error("Finish the active review before starting a new session.");
     const result = await this.requireRpc().newSession();
     if (result.cancelled) return { cancelled: true, sessionFile: this.activePath };
     this.running = false;
     this.planPhase = "idle";
     const state = await this.requireRpc().getState();
     this.activePath = state.sessionFile || null;
-    this.persist();
+    this.sessionName = state.sessionName || null;
+    this.persistAll();
     this.emitHostState();
     this.emit(await this.snapshot());
     return { cancelled: false, sessionFile: this.activePath };
@@ -106,13 +249,14 @@ export class HostController implements HostBackend {
 
   private async restartRpc(): Promise<{ sessionFile: string | null }> {
     if (this.rpcStatus === "starting" || this.recovering) throw new Error("Pi is already restarting.");
-    if (this.review.active) throw new Error("Finish the active review before restarting Pi.");
+    if (this.review.active?.sessionId === this.id) throw new Error("Finish the active review before restarting Pi.");
     const rpc = this.rpc;
     if (rpc) {
       try {
         const state = await rpc.getState();
         this.activePath = state.sessionFile || this.activePath;
-        this.persist();
+        this.sessionName = state.sessionName || null;
+        this.persistAll();
       } catch {}
     }
     this.rpc = null;
@@ -136,23 +280,29 @@ export class HostController implements HostBackend {
     try {
       await rpc.start();
       this.rpc = rpc;
-      this.cwd = cwd;
       this.rpcStatus = "ready";
       const state = await rpc.getState();
       this.activePath = state.sessionFile || null;
+      this.sessionName = state.sessionName || null;
       this.running = state.isStreaming;
-      this.persist();
+      this.persistAll();
       this.emitHostState();
     } catch (error) {
       this.rpcStatus = "error";
-      this.emit({ type: "host_state", rpcStatus: "error", activeReviewId: this.review.active?.id ?? null, error: error instanceof Error ? error.message : String(error) });
+      this.emit({
+        type: "host_state",
+        sessionId: this.id,
+        rpcStatus: "error",
+        activeReviewId: this.review.active?.sessionId === this.id ? this.review.active.id : null,
+        error: error instanceof Error ? error.message : String(error),
+      });
       throw error;
     }
   }
 
   private onRpcEvent(event: any): void {
     if (event.type === "extension_ui_request") {
-      const request = event as ExtensionUiRequest;
+      const request = { ...event, sessionId: this.id } as ExtensionUiRequest;
       if (["select", "confirm", "input", "editor"].includes(request.method)) this.pendingUiRequest = request;
       this.emit(request);
       return;
@@ -164,20 +314,23 @@ export class HostController implements HostBackend {
     }
     if (event.type === "tool_execution_start" && event.toolName === PLAN_TOOL && !this.review.active) {
       this.planPhase = "reviewing";
-      this.review.start("plan", String(event.toolCallId));
+      this.review.start(this.id, "plan", String(event.toolCallId));
+    }
+    if (event.type === "tool_execution_start" && event.toolName === PLAN_TOOL && this.review.active?.sessionId !== this.id) {
+      this.emit({ type: "error", sessionId: this.id, code: "review_busy", message: "Another Pi session is already using Plannotator." });
     }
     if (event.type === "tool_execution_end" && event.toolName === PLAN_TOOL) {
       const approved = Boolean(event.result?.details?.approved);
       this.planPhase = approved ? "executing" : "planning";
-      this.review.finish({ approved, ...(event.isError ? { error: "Plan review failed." } : {}) });
+      this.review.finish(this.id, { approved, ...(event.isError ? { error: "Plan review failed." } : {}) });
     }
     if (event.type === "session_info_changed" || event.type === "agent_settled") void this.captureSessionPath();
-    this.emit({ type: "event", event });
+    this.emit({ type: "event", sessionId: this.id, event });
     if (event.type === "agent_settled" || event.type === "compaction_end" || event.type === "model_select") void this.emitContextUsage();
     this.emitHostState();
   }
 
-  private async respondToExtensionUi(command: Extract<ClientCommand, { type: "extension_ui_response" }>): Promise<void> {
+  private async respondToExtensionUi(command: Extract<SessionCommand, { type: "extension_ui_response" }>): Promise<void> {
     const request = this.pendingUiRequest;
     if (!request || request.id !== command.uiRequestId) throw new Error("This Pi dialog is no longer active.");
     if (!command.cancelled && request.method === "confirm" && command.confirmed === undefined) throw new Error("Confirmation response is missing.");
@@ -197,7 +350,7 @@ export class HostController implements HostBackend {
   private async emitContextUsage(): Promise<void> {
     try {
       const contextUsage = (await this.requireRpc().getSessionStats()).contextUsage ?? null;
-      this.emit({ type: "event", event: { type: "context_usage", contextUsage } });
+      this.emit({ type: "event", sessionId: this.id, event: { type: "context_usage", contextUsage } });
     } catch {}
   }
 
@@ -205,30 +358,32 @@ export class HostController implements HostBackend {
     try {
       const state = await this.requireRpc().getState();
       this.activePath = state.sessionFile || this.activePath;
-      this.persist();
+      this.sessionName = state.sessionName || null;
+      this.persistAll();
     } catch {}
   }
 
   private async setPlanMode(mode: "enter" | "exit" | "toggle" | "status"): Promise<{ phase: Snapshot["planPhase"] }> {
     if (mode === "status") return { phase: this.planPhase };
+    if (this.review.active && this.review.active.sessionId !== this.id) throw new Error("Another Pi session is already using Plannotator.");
     const shouldToggle = mode === "toggle" || (mode === "enter" && this.planPhase === "idle") || (mode === "exit" && this.planPhase !== "idle");
     if (shouldToggle) {
       await this.requireRpc().prompt("/plannotator");
       this.planPhase = this.planPhase === "idle" ? "planning" : "idle";
-      this.emit({ type: "event", event: { type: "plan_phase", phase: this.planPhase } });
+      this.emit({ type: "event", sessionId: this.id, event: { type: "plan_phase", phase: this.planPhase } });
     }
     return { phase: this.planPhase };
   }
 
   private async startCodeReview(): Promise<{ reviewId: string }> {
     if (this.running) throw new Error("Wait for Pi to finish before starting code review.");
-    const id = this.review.start("code");
+    const id = this.review.start(this.id, "code");
     try {
       await this.requireRpc().prompt("/plannotator-review");
-      void this.review.watchCodeReview(Number(process.env.PLANNOTATOR_PORT || 19432));
+      void this.review.watchCodeReview(this.id, Number(process.env.PLANNOTATOR_PORT || 19432));
       return { reviewId: id };
     } catch (error) {
-      this.review.finish({ error: error instanceof Error ? error.message : String(error) });
+      this.review.finish(this.id, { error: error instanceof Error ? error.message : String(error) });
       throw error;
     }
   }
@@ -239,12 +394,23 @@ export class HostController implements HostBackend {
     let contextUsage: Snapshot["contextUsage"] = null;
     try { contextUsage = ((await rpc.getSessionStats()).contextUsage as Snapshot["contextUsage"]) ?? null; } catch {}
     this.activePath = state.sessionFile || this.activePath;
-    this.persist();
+    this.sessionName = state.sessionName || null;
+    this.persistAll();
     return {
-      type: "snapshot", version: PROTOCOL_VERSION, sessionFile: state.sessionFile || null, sessionName: state.sessionName || null,
-      cwd: this.cwd, entries: entries.entries, model: (state.model as any) || null, availableModels: models as any[],
+      type: "snapshot",
+      version: PROTOCOL_VERSION,
+      sessionId: this.id,
+      sessionFile: state.sessionFile || null,
+      sessionName: state.sessionName || null,
+      cwd: this.cwd,
+      entries: entries.entries,
+      model: (state.model as any) || null,
+      availableModels: models as any[],
       commands: commands.map((command) => ({ name: command.name, description: command.description, source: command.source, scope: command.sourceInfo.scope })),
-      thinkingLevel: state.thinkingLevel, isRunning: state.isStreaming, contextUsage, planPhase: this.planPhase,
+      thinkingLevel: state.thinkingLevel,
+      isRunning: state.isStreaming,
+      contextUsage,
+      planPhase: this.planPhase,
     };
   }
 
@@ -262,29 +428,58 @@ export class HostController implements HostBackend {
         await this.startRpc(this.cwd, this.activePath && existsSync(this.activePath) ? this.activePath : undefined);
         this.emit(await this.snapshot());
       } catch (error) {
-        this.emit({ type: "host_state", rpcStatus: "error", activeReviewId: this.review.active?.id ?? null, error: error instanceof Error ? error.message : String(error) });
+        this.emit({
+          type: "host_state",
+          sessionId: this.id,
+          rpcStatus: "error",
+          activeReviewId: this.review.active?.sessionId === this.id ? this.review.active.id : null,
+          error: error instanceof Error ? error.message : String(error),
+        });
       } finally {
         this.recovering = false;
       }
     }
   }
 
-  private hostState(): ServerMessage { return { type: "host_state", rpcStatus: this.rpcStatus, activeReviewId: this.review.active?.id ?? null }; }
-  private emitHostState(): void { this.emit(this.hostState()); }
-  private emit(message: ServerMessage): void { for (const listener of this.listeners) listener(message); }
+  private hostState(): ServerMessage {
+    return {
+      type: "host_state",
+      sessionId: this.id,
+      rpcStatus: this.rpcStatus,
+      activeReviewId: this.review.active?.sessionId === this.id ? this.review.active.id : null,
+    };
+  }
+
   private requireRpc(): RpcClient {
     if (!this.rpc || this.rpcStatus === "error" || this.rpcStatus === "stopped") throw new Error("Pi RPC runtime is unavailable.");
     return this.rpc;
   }
-  private persist(): void {
-    mkdirSync(dirname(statePath), { recursive: true });
-    writeFileSync(statePath, JSON.stringify({ cwd: this.cwd, sessionPath: this.activePath }, null, 2));
-  }
 }
 
-function readHostState(): { cwd?: string; sessionPath?: string } {
+function normalizeCwd(input: string): string {
+  if (!isAbsolute(input)) throw new Error("Working directory must be an absolute path on the Pi host.");
+  let path: string;
+  try { path = realpathSync(input); } catch { throw new Error(`Working directory does not exist: ${input}`); }
+  if (!statSync(path).isDirectory()) throw new Error(`Working directory is not a directory: ${input}`);
+  return path;
+}
+
+function readHostState(): PersistedSession[] {
   for (const path of [statePath, legacyStatePath]) {
-    try { return JSON.parse(readFileSync(path, "utf8")); } catch {}
+    try {
+      const value = JSON.parse(readFileSync(path, "utf8"));
+      if (Array.isArray(value.sessions)) {
+        return value.sessions.flatMap((session: any) => {
+          if (!session?.id || !session?.cwd) return [];
+          try {
+            return [{ id: String(session.id), cwd: normalizeCwd(String(session.cwd)), sessionPath: session.sessionPath ? String(session.sessionPath) : null }];
+          } catch { return []; }
+        });
+      }
+      if (value.cwd) {
+        return [{ id: randomUUID(), cwd: normalizeCwd(String(value.cwd)), sessionPath: value.sessionPath ? String(value.sessionPath) : null }];
+      }
+    } catch {}
   }
-  return {};
+  return [];
 }

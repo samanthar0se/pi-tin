@@ -73,9 +73,16 @@ export class HostWebSocketServer {
       if (parsed.data.type === "auth") return;
       try {
         const result = await this.backend.handle(parsed.data);
-        this.send(socket, { type: "response", id: parsed.data.id, command: parsed.data.type, success: true, ...result });
+        this.send(socket, {
+          type: "response", id: parsed.data.id, command: parsed.data.type,
+          ...("sessionId" in parsed.data ? { sessionId: parsed.data.sessionId } : {}), success: true, ...result,
+        });
       } catch (error) {
-        this.send(socket, { type: "response", id: parsed.data.id, command: parsed.data.type, success: false, error: error instanceof Error ? error.message : String(error) });
+        this.send(socket, {
+          type: "response", id: parsed.data.id, command: parsed.data.type,
+          ...("sessionId" in parsed.data ? { sessionId: parsed.data.sessionId } : {}), success: false,
+          error: error instanceof Error ? error.message : String(error),
+        });
       }
     });
     socket.on("close", () => { const state = this.clients.get(socket); if (state) clearTimeout(state.timer); this.clients.delete(socket); });

@@ -66,11 +66,35 @@ main { min-width: 0; min-height: 0; height: 100%; display: flex; flex-direction:
 
 .offline-banner { min-height: 32px; display: flex; align-items: center; justify-content: center; gap: 7px; background: #fff7df; color: #785718; border-bottom: 1px solid #efdfaf; font-size: 11px; }
 :root.dark .offline-banner { background: #3b311e; color: #e7cb85; border-color: #554828; }
+.session-tabs { min-height: 39px; padding: 5px 12px; display: flex; align-items: center; gap: 5px; overflow-x: auto; border-bottom: 1px solid var(--line); scrollbar-width: thin; }
+.session-tab { flex: 0 1 190px; min-width: 92px; max-width: 220px; height: 29px; padding: 0 3px 0 9px; display: flex; align-items: center; border: 1px solid transparent; border-radius: 8px; color: var(--muted); background: transparent; }
+.session-tab:hover { background: var(--panel); }
+.session-tab.active { border-color: var(--line); color: var(--text); background: var(--panel); }
+.session-tab button { border: 0; background: transparent; color: inherit; cursor: pointer; }
+.session-tab-select { min-width: 0; height: 100%; padding: 0; display: flex; flex: 1; align-items: center; gap: 7px; text-align: left; }
+.session-tab-select span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+.session-tab-select i { width: 6px; height: 6px; flex: none; border-radius: 50%; background: #aaa; }
+.session-tab-select i.ready { background: #22a06b; }
+.session-tab-select i.starting, .session-tab-select i.running { background: #d59b35; animation: pulse 1s infinite; }
+.session-tab-select i.error { background: #d85047; }
+.session-tab-select b { width: 6px; height: 6px; margin-left: auto; flex: none; border-radius: 50%; background: var(--work); animation: pulse 1.3s infinite; }
+.session-tab-close { width: 23px; height: 23px; padding: 0; flex: none; display: grid; place-items: center; border-radius: 6px !important; opacity: 0; }
+.session-tab:hover .session-tab-close, .session-tab.active .session-tab-close { opacity: .65; }
+.session-tab-close:hover:not(:disabled) { background: var(--panel-2); opacity: 1; }
+.session-tab-close:disabled { cursor: not-allowed; opacity: .18 !important; }
+.session-tab-add { width: 28px; height: 28px; flex: none; border: 1px dashed var(--line-strong); border-radius: 8px; color: var(--muted); background: transparent; cursor: pointer; }
+.session-tab-add:hover { border-style: solid; color: var(--text); background: var(--panel); }
 .view-tabs { min-height: 38px; display: flex; justify-content: center; gap: 6px; padding: 5px; border-bottom: 1px solid var(--line); }
 .view-tabs button { min-width: 70px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); font-size: 12px; cursor: pointer; }
 .view-tabs button.active { background: var(--panel); color: var(--text); }
 .review-pulse { display: inline-block; width: 6px; height: 6px; margin-right: 6px; border-radius: 50%; background: var(--work); animation: pulse 1.3s infinite; }
 .workspace { flex: 1; min-height: 0; position: relative; }
+.no-session { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--muted); }
+.no-session > span { width: 42px; height: 42px; margin-bottom: 16px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); color: var(--text); font: 26px Georgia, serif; }
+.no-session strong { color: var(--text); font-size: 17px; }
+.no-session p { margin: 7px 0 18px; font-size: 12px; }
+.no-session button { height: 34px; padding: 0 12px; display: flex; align-items: center; gap: 6px; border: 0; border-radius: 9px; background: var(--accent); color: var(--accent-text); cursor: pointer; font-size: 11px; }
+.no-session button:disabled { opacity: .4; cursor: not-allowed; }
 
 .thread-root, .thread-viewport { height: 100%; }
 .thread-viewport { overflow-y: auto; scroll-behavior: smooth; scrollbar-color: var(--line-strong) transparent; }
@@ -209,10 +233,12 @@ main { min-width: 0; min-height: 0; height: 100%; display: flex; flex-direction:
 .host-control button:hover:not(:disabled) { border-color: var(--work); color: var(--work); }
 .host-control button:disabled { opacity: .45; cursor: not-allowed; }
 .profile-dialog .build-revision { margin: 16px 0 -8px; font-family: var(--font-mono); opacity: .7; }
+.profile-dialog .session-dialog-error { margin: 14px 0 -6px; color: var(--danger); font-size: 11px; }
 .profile-dialog footer { margin-top: 22px; }
 .profile-dialog footer span { flex: 1; }
 .profile-dialog footer button { padding: 8px 13px; display: flex; align-items: center; gap: 5px; border: 1px solid var(--line); border-radius: 9px; background: var(--bg); cursor: pointer; font-size: 11px; }
 .profile-dialog footer .primary { border-color: var(--accent); background: var(--accent); color: var(--accent-text); }
+.profile-dialog footer button:disabled { opacity: .45; cursor: not-allowed; }
 .profile-dialog footer .danger { color: var(--danger); }
 
 .spin { animation: spin 1s linear infinite; }

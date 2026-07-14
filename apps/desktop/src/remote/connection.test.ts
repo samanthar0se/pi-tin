@@ -23,8 +23,8 @@ describe("connection auth boundary", () => {
     connection.connect({ host: "10.0.0.2", controlPort: 31415, plannotatorPort: 19432, token: "token" });
     socket.onopen!(new Event("open"));
     expect(JSON.parse(socket.sent[0]!)).toMatchObject({ type: "auth", token: "token" });
-    socket.onmessage!({ data: JSON.stringify({ type: "snapshot", version: PROTOCOL_VERSION, sessionFile: null, sessionName: null, cwd: "/x", entries: [], model: null, availableModels: [], commands: [], thinkingLevel: "off", isRunning: false, contextUsage: null, planPhase: "idle" }) } as MessageEvent);
-    const pending = connection.command({ type: "abort" });
+    socket.onmessage!({ data: JSON.stringify({ type: "session_list", version: PROTOCOL_VERSION, sessions: [], maxSessions: 5 }) } as MessageEvent);
+    const pending = connection.command({ type: "abort", sessionId: "s1" });
     const command = JSON.parse(socket.sent[1]!);
     socket.onmessage!({ data: JSON.stringify({ type: "response", id: command.id, command: "abort", success: true }) } as MessageEvent);
     await expect(pending).resolves.toBeUndefined();

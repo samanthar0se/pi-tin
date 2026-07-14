@@ -1,6 +1,6 @@
 # Project Instructions
 
-- Keep the product lean: one configured host, one persistent Pi RPC session, and no session sidebar or browser.
+- Keep the product lean: one configured host, up to five persistent Pi RPC sessions, compact session tabs, and no host or saved-session browser.
 - After implementation changes, run `node ./build-host.mjs`; this is the canonical test, bundle, and local Pi install/update command.
 - After completing any repository change, commit the task's changes to Git and push the commit to the configured remote; do not leave completed work uncommitted or unpushed.
 - Restart Pi or use `/reload` after extension changes.

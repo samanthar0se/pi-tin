@@ -1,12 +1,12 @@
 # Pi Tin
 
-A small Windows desktop client for controlling one persistent [Pi](https://github.com/earendil-works/pi) coding-agent session on a trusted local network. It mirrors live chat/tool activity and embeds [Plannotator](https://github.com/backnotprop/plannotator) reviews.
+A small Windows desktop client for controlling persistent [Pi](https://github.com/earendil-works/pi) coding-agent sessions on a trusted local network. It mirrors live chat/tool activity and embeds [Plannotator](https://github.com/backnotprop/plannotator) reviews.
 
 ## MVP boundaries
 
-- Exactly one host connection and one persistent Pi RPC session; there is no host or session browser.
+- Exactly one host connection and up to five persistent Pi RPC sessions; compact tabs switch between open sessions without adding a host or saved-session browser.
 - A foreground host controller owns the RPC child process. It is not a system service and does not use SSH.
-- Session management, simultaneous agents, file management, attachments, and cloud services are intentionally out of scope.
+- Simultaneous agents may use different working directories. Saved-session browsing, file management, attachments, and cloud services remain intentionally out of scope.
 - Control traffic is token-authenticated but uses plain WebSocket on the LAN.
 - Plannotator's transient review port remains unauthenticated upstream. Restrict both ports with the host firewall and do not expose them to the internet.
 
@@ -37,7 +37,7 @@ export PLANNOTATOR_PORT=19432
 node ./start-host.mjs
 ```
 
-The controller prints its cryptographically random token at startup and persists it in `~/.pi/agent/pi-tin.json`. It starts one Pi `--mode rpc` child and restores that session after restart. Run a separate normal TUI process only when local terminal use is wanted; it is independent of the controller.
+The controller prints its cryptographically random token at startup and persists it in `~/.pi/agent/pi-tin.json`. It restores up to five open Pi `--mode rpc` children after restart. Each runtime has an immutable working directory and restores its current native Pi session. Run a separate normal TUI process only when local terminal use is wanted; it is independent of the controller.
 
 Upgrading from Pi Remote automatically migrates the existing host token and session state. The `PI_REMOTE_HOST`, `PI_REMOTE_PORT`, and `PI_REMOTE_CWD` variables remain supported as fallbacks; prefer the new `PI_TIN_*` names.
 
@@ -63,14 +63,16 @@ New-NetFirewallRule -DisplayName "Pi Tin Plannotator" -Direction Inbound -Action
 2. Open Connection Settings from the gear in the top toolbar.
 3. Enter the host/IP, `31415`, `19432`, and token, then save and connect.
 4. Reopen Settings whenever the single connection needs to be changed or removed.
+5. Use **New** to open another runtime, entering an existing absolute working directory on the Pi host.
 
 The token is stored in Tauri Store as local application data, not Windows Credential Manager. This is an explicit personal-project tradeoff.
 
 ## Chat and reviews
 
-- Send normally while Pi is idle. Sending while it runs is delivered as steering guidance.
+- Use the compact session tabs to switch between up to five independently running Pi sessions. Closing a tab stops that runtime but keeps its native Pi transcript on the host.
+- **New** opens another runtime with its own working directory. `/new` starts a fresh transcript inside the selected runtime.
+- Send normally while the selected Pi session is idle. Sending while it runs is delivered as steering guidance.
 - Type `/` in the composer to discover and invoke the host's current extension, prompt-template, and skill commands.
-- Use **New** or `/new` to start a fresh persistent session; the previous session remains saved on the host.
 - Use Stop to call Pi's abort operation.
 - Model, thinking level, compact, and plan mode act on the remote Pi session.
 - Extension dialogs are bridged to the desktop, including `pi-ask-user` choices, freeform answers, comments, multi-select input, confirmation, and cancellation.
@@ -78,7 +80,7 @@ The token is stored in Tauri Store as local application data, not Windows Creden
 - **Review changes** opens an uncommitted-change code review. Submitted feedback is sent back to Pi as a follow-up.
 - You can return to Chat while a review is open; the Review tab remains visible until the matching review completes.
 
-If review loading stalls, verify `PLANNOTATOR_PORT`, `PLANNOTATOR_REMOTE=1`, the firewall rule, and that `@plannotator/pi-extension` is installed. Only one review can use a configured Plannotator port at a time.
+If review loading stalls, verify `PLANNOTATOR_PORT`, `PLANNOTATOR_REMOTE=1`, the firewall rule, and that `@plannotator/pi-extension` is installed. All agents can run simultaneously, but only one review can use the configured Plannotator port at a time.
 
 ## Development
 
@@ -157,6 +159,9 @@ Native bundle output is written below `apps/desktop/src-tauri/target/release/bun
 Use a Windows client and a second LAN machine running Pi:
 
 - connect and receive the current session snapshot;
+- create sessions for two different working directories, run both simultaneously, and switch tabs while they stream;
+- restart the host and verify all open session tabs and transcripts return;
+- close an idle session and verify its native Pi transcript remains on the host;
 - send and observe streaming text/thinking;
 - run a tool and inspect running/completed output;
 - answer and cancel `pi-ask-user` select, freeform, comment, and multi-select prompts;
@@ -169,4 +174,4 @@ Use a Windows client and a second LAN machine running Pi:
 
 ## Design and licenses
 
-The transport retains Tau's excellent WebSocket ideas—raw lifecycle events, request-ID commands, reconnect backoff, and authoritative snapshots—while the host controller uses Pi's public RPC API for one persistent session. Tau is MIT-licensed. Plannotator is MIT OR Apache-2.0, and assistant-ui is MIT. See each dependency/repository for its license text.
+The transport retains Tau's excellent WebSocket ideas—raw lifecycle events, request-ID commands, reconnect backoff, and authoritative snapshots—while the host controller uses Pi's public RPC API for isolated persistent sessions. Tau is MIT-licensed. Plannotator is MIT OR Apache-2.0, and assistant-ui is MIT. See each dependency/repository for its license text.

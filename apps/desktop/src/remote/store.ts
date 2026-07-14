@@ -1,19 +1,38 @@
 import { create } from "zustand";
 import { load } from "@tauri-apps/plugin-store";
-import type { ClientCommandInput, ExtensionUiRequest, ReviewStarted, ServerMessage } from "@pi-tin/protocol";
+import type {
+  ClientCommandInput,
+  ExtensionUiRequest,
+  ReviewStarted,
+  ServerMessage,
+  SessionCommandInput,
+  SessionDescriptor,
+} from "@pi-tin/protocol";
 import { PiConnection, type HostProfile } from "./connection";
 import { emptySession, reducePiEvent, replaceFromSnapshot, type SessionState } from "./reducer";
 
 export type ActiveReview = { reviewId: string; kind: "plan" | "code"; url: string; visible: boolean; loading: boolean };
 
 type LegacyHostProfile = HostProfile & { id?: string; name?: string };
+type RpcStatus = "starting" | "ready" | "error" | "stopped";
+type SessionViewState = {
+  session: SessionState;
+  rpcStatus: RpcStatus;
+  review: ActiveReview | null;
+  extensionUiRequest: ExtensionUiRequest | null;
+  lastError?: string;
+};
 
 type AppStore = {
   profile: HostProfile | null;
   connectionState: "connecting" | "connected" | "offline" | "error";
   connectionDetail?: string;
+  sessions: SessionDescriptor[];
+  sessionViews: Record<string, SessionViewState>;
+  activeSessionId: string | null;
+  maxSessions: number;
   session: SessionState;
-  rpcStatus: "starting" | "ready" | "error" | "stopped";
+  rpcStatus: RpcStatus;
   review: ActiveReview | null;
   extensionUiRequest: ExtensionUiRequest | null;
   lastError?: string;
@@ -21,7 +40,10 @@ type AppStore = {
   saveProfile: (profile: HostProfile) => Promise<void>;
   clearProfile: () => Promise<void>;
   disconnect: () => void;
-  command: (command: ClientCommandInput, timeoutMs?: number) => Promise<unknown>;
+  setActiveSession: (sessionId: string) => void;
+  createSession: (cwd: string) => Promise<string>;
+  closeSession: (sessionId: string) => Promise<void>;
+  command: (command: SessionCommandInput, timeoutMs?: number) => Promise<unknown>;
   respondToExtensionUi: (response: { value?: string; confirmed?: boolean; cancelled?: boolean }) => Promise<void>;
   showReview: (visible: boolean) => void;
   reviewLoaded: () => void;
@@ -84,32 +106,208 @@ function reviewUrl(profile: HostProfile | null, message: ReviewStarted): string 
   }
 }
 
+function emptyView(descriptor?: SessionDescriptor): SessionViewState {
+  return {
+    session: {
+      ...emptySession,
+      cwd: descriptor?.cwd || "",
+      sessionFile: descriptor?.sessionFile || null,
+      sessionName: descriptor?.sessionName || null,
+      isRunning: descriptor?.isRunning || false,
+    },
+    rpcStatus: descriptor?.rpcStatus || "stopped",
+    review: null,
+    extensionUiRequest: null,
+  };
+}
+
+function activeProjection(sessionViews: Record<string, SessionViewState>, activeSessionId: string | null) {
+  const view = activeSessionId ? sessionViews[activeSessionId] : undefined;
+  return view ? {
+    session: view.session,
+    rpcStatus: view.rpcStatus,
+    review: view.review,
+    extensionUiRequest: view.extensionUiRequest,
+    lastError: view.lastError,
+  } : {
+    session: { ...emptySession },
+    rpcStatus: "stopped" as const,
+    review: null,
+    extensionUiRequest: null,
+    lastError: undefined,
+  };
+}
+
+function updateDescriptor(sessions: SessionDescriptor[], sessionId: string, update: Partial<SessionDescriptor>): SessionDescriptor[] {
+  return sessions.map((session) => session.sessionId === sessionId ? { ...session, ...update } : session);
+}
+
 let connection: PiConnection;
 
 export const useAppStore = create<AppStore>((set, get) => {
   connection = new PiConnection({
     onState(connectionState, connectionDetail) { set({ connectionState, connectionDetail }); },
     onMessage(message: ServerMessage) {
-      if (message.type === "snapshot") {
-        set({ session: replaceFromSnapshot(message), lastError: undefined });
+      if (message.type === "session_list") {
+        set((state) => {
+          const sessionViews: Record<string, SessionViewState> = {};
+          for (const descriptor of message.sessions) {
+            const previous = state.sessionViews[descriptor.sessionId];
+            sessionViews[descriptor.sessionId] = previous ? {
+              ...previous,
+              rpcStatus: descriptor.rpcStatus,
+              session: {
+                ...previous.session,
+                cwd: descriptor.cwd,
+                sessionFile: descriptor.sessionFile,
+                sessionName: descriptor.sessionName,
+                isRunning: descriptor.isRunning,
+              },
+            } : emptyView(descriptor);
+          }
+          const activeSessionId = state.activeSessionId && sessionViews[state.activeSessionId]
+            ? state.activeSessionId
+            : message.sessions[0]?.sessionId || null;
+          return {
+            sessions: message.sessions,
+            sessionViews,
+            activeSessionId,
+            maxSessions: message.maxSessions,
+            ...activeProjection(sessionViews, activeSessionId),
+          };
+        });
+      } else if (message.type === "snapshot") {
+        set((state) => {
+          const previous = state.sessionViews[message.sessionId] || emptyView();
+          const sessionViews = {
+            ...state.sessionViews,
+            [message.sessionId]: { ...previous, session: replaceFromSnapshot(message), lastError: undefined },
+          };
+          const sessions = updateDescriptor(state.sessions, message.sessionId, {
+            cwd: message.cwd,
+            sessionFile: message.sessionFile,
+            sessionName: message.sessionName,
+            isRunning: message.isRunning,
+          });
+          return {
+            sessions,
+            sessionViews,
+            ...(state.activeSessionId === message.sessionId ? activeProjection(sessionViews, state.activeSessionId) : {}),
+          };
+        });
       } else if (message.type === "host_state") {
-        set({ rpcStatus: message.rpcStatus, lastError: message.error });
+        set((state) => {
+          const previous = state.sessionViews[message.sessionId] || emptyView();
+          const sessionViews = {
+            ...state.sessionViews,
+            [message.sessionId]: { ...previous, rpcStatus: message.rpcStatus, lastError: message.error },
+          };
+          const sessions = updateDescriptor(state.sessions, message.sessionId, {
+            rpcStatus: message.rpcStatus,
+            activeReviewId: message.activeReviewId ?? null,
+          });
+          return {
+            sessions,
+            sessionViews,
+            ...(state.activeSessionId === message.sessionId ? activeProjection(sessionViews, state.activeSessionId) : {}),
+          };
+        });
       } else if (message.type === "event") {
-        set((state) => ({
-          session: reducePiEvent(state.session, message.event),
-          ...(message.event.type === "agent_settled" ? { extensionUiRequest: null } : {}),
-        }));
+        set((state) => {
+          const previous = state.sessionViews[message.sessionId] || emptyView();
+          const session = reducePiEvent(previous.session, message.event);
+          const sessionViews = {
+            ...state.sessionViews,
+            [message.sessionId]: {
+              ...previous,
+              session,
+              ...(message.event.type === "agent_settled" ? { extensionUiRequest: null } : {}),
+            },
+          };
+          const sessions = updateDescriptor(state.sessions, message.sessionId, { isRunning: session.isRunning });
+          return {
+            sessions,
+            sessionViews,
+            ...(state.activeSessionId === message.sessionId ? activeProjection(sessionViews, state.activeSessionId) : {}),
+          };
+        });
       } else if (message.type === "extension_ui_request") {
-        if (["select", "confirm", "input", "editor"].includes(message.method)) set({ extensionUiRequest: message });
-        else if (message.method === "notify" && message.notifyType === "error") set({ lastError: message.message });
+        if (["select", "confirm", "input", "editor"].includes(message.method)) {
+          set((state) => {
+            const previous = state.sessionViews[message.sessionId] || emptyView();
+            const sessionViews = {
+              ...state.sessionViews,
+              [message.sessionId]: { ...previous, extensionUiRequest: message },
+            };
+            return {
+              sessionViews,
+              activeSessionId: message.sessionId,
+              ...activeProjection(sessionViews, message.sessionId),
+            };
+          });
+        } else if (message.method === "notify" && message.notifyType === "error") {
+          set((state) => {
+            const previous = state.sessionViews[message.sessionId] || emptyView();
+            const sessionViews = {
+              ...state.sessionViews,
+              [message.sessionId]: { ...previous, lastError: message.message },
+            };
+            return {
+              sessionViews,
+              ...(state.activeSessionId === message.sessionId ? activeProjection(sessionViews, state.activeSessionId) : {}),
+            };
+          });
+        }
       } else if (message.type === "review_started") {
-        set({ review: { reviewId: message.reviewId, kind: message.kind, url: reviewUrl(get().profile, message), visible: true, loading: true } });
+        set((state) => {
+          const previous = state.sessionViews[message.sessionId] || emptyView();
+          const sessionViews = {
+            ...state.sessionViews,
+            [message.sessionId]: {
+              ...previous,
+              review: { reviewId: message.reviewId, kind: message.kind, url: reviewUrl(get().profile, message), visible: true, loading: true },
+            },
+          };
+          return {
+            sessionViews,
+            sessions: updateDescriptor(state.sessions, message.sessionId, { activeReviewId: message.reviewId }),
+            activeSessionId: message.sessionId,
+            ...activeProjection(sessionViews, message.sessionId),
+          };
+        });
       } else if (message.type === "review_finished") {
-        set((state) => state.review?.reviewId === message.reviewId
-          ? { review: null, lastError: message.error }
-          : { lastError: message.error });
+        set((state) => {
+          const previous = state.sessionViews[message.sessionId] || emptyView();
+          const sessionViews = {
+            ...state.sessionViews,
+            [message.sessionId]: {
+              ...previous,
+              review: previous.review?.reviewId === message.reviewId ? null : previous.review,
+              lastError: message.error,
+            },
+          };
+          return {
+            sessionViews,
+            sessions: updateDescriptor(state.sessions, message.sessionId, { activeReviewId: null }),
+            ...(state.activeSessionId === message.sessionId ? activeProjection(sessionViews, state.activeSessionId) : {}),
+          };
+        });
       } else if (message.type === "error") {
-        set({ lastError: message.message });
+        if (message.sessionId) {
+          set((state) => {
+            const previous = state.sessionViews[message.sessionId!] || emptyView();
+            const sessionViews = {
+              ...state.sessionViews,
+              [message.sessionId!]: { ...previous, lastError: message.message },
+            };
+            return {
+              sessionViews,
+              ...(state.activeSessionId === message.sessionId ? activeProjection(sessionViews, state.activeSessionId) : {}),
+            };
+          });
+        } else {
+          set({ lastError: message.message });
+        }
       }
     },
   });
@@ -117,7 +315,11 @@ export const useAppStore = create<AppStore>((set, get) => {
   return {
     profile: null,
     connectionState: "offline",
-    session: emptySession,
+    sessions: [],
+    sessionViews: {},
+    activeSessionId: null,
+    maxSessions: 5,
+    session: { ...emptySession },
     rpcStatus: "stopped",
     review: null,
     extensionUiRequest: null,
@@ -127,27 +329,100 @@ export const useAppStore = create<AppStore>((set, get) => {
       if (profile) connection.connect(profile);
     },
     async saveProfile(profile) {
-      set({ profile, session: emptySession, review: null, extensionUiRequest: null, lastError: undefined });
+      set({
+        profile,
+        sessions: [],
+        sessionViews: {},
+        activeSessionId: null,
+        session: { ...emptySession },
+        rpcStatus: "stopped",
+        review: null,
+        extensionUiRequest: null,
+        lastError: undefined,
+      });
       await writeProfile(profile);
       connection.connect(profile);
     },
     async clearProfile() {
       connection.disconnect();
-      set({ profile: null, session: emptySession, review: null, extensionUiRequest: null, connectionState: "offline", connectionDetail: undefined });
+      set({
+        profile: null,
+        sessions: [],
+        sessionViews: {},
+        activeSessionId: null,
+        session: { ...emptySession },
+        rpcStatus: "stopped",
+        review: null,
+        extensionUiRequest: null,
+        connectionState: "offline",
+        connectionDetail: undefined,
+      });
       await writeProfile(null);
     },
     disconnect() {
       connection.disconnect();
       set({ connectionState: "offline", connectionDetail: undefined, review: null });
     },
-    command(command, timeoutMs) { return connection.command(command, timeoutMs); },
+    setActiveSession(activeSessionId) {
+      set((state) => state.sessionViews[activeSessionId]
+        ? { activeSessionId, ...activeProjection(state.sessionViews, activeSessionId) }
+        : {});
+    },
+    async createSession(cwd) {
+      const result = await connection.command({ type: "create_session", cwd }, 30_000) as { sessionId: string };
+      get().setActiveSession(result.sessionId);
+      return result.sessionId;
+    },
+    async closeSession(sessionId) {
+      await connection.command({ type: "close_session", sessionId }, 30_000);
+    },
+    command(command, timeoutMs) {
+      const sessionId = get().activeSessionId;
+      if (!sessionId) return Promise.reject(new Error("Open a Pi session before sending a command."));
+      return connection.command({ ...command, sessionId } as ClientCommandInput, timeoutMs);
+    },
     async respondToExtensionUi(response) {
       const request = get().extensionUiRequest;
       if (!request) return;
-      await connection.command({ type: "extension_ui_response", uiRequestId: request.id, ...response });
-      set((state) => state.extensionUiRequest?.id === request.id ? { extensionUiRequest: null } : {});
+      await connection.command({ type: "extension_ui_response", sessionId: request.sessionId, uiRequestId: request.id, ...response });
+      set((state) => {
+        const previous = state.sessionViews[request.sessionId];
+        if (!previous || previous.extensionUiRequest?.id !== request.id) return {};
+        const sessionViews = {
+          ...state.sessionViews,
+          [request.sessionId]: { ...previous, extensionUiRequest: null },
+        };
+        return {
+          sessionViews,
+          ...(state.activeSessionId === request.sessionId ? activeProjection(sessionViews, state.activeSessionId) : {}),
+        };
+      });
     },
-    showReview(visible) { set((state) => ({ review: state.review ? { ...state.review, visible } : null })); },
-    reviewLoaded() { set((state) => ({ review: state.review ? { ...state.review, loading: false } : null })); },
+    showReview(visible) {
+      set((state) => {
+        const sessionId = state.activeSessionId;
+        if (!sessionId) return {};
+        const previous = state.sessionViews[sessionId];
+        if (!previous?.review) return {};
+        const sessionViews = {
+          ...state.sessionViews,
+          [sessionId]: { ...previous, review: { ...previous.review, visible } },
+        };
+        return { sessionViews, ...activeProjection(sessionViews, sessionId) };
+      });
+    },
+    reviewLoaded() {
+      set((state) => {
+        const sessionId = state.activeSessionId;
+        if (!sessionId) return {};
+        const previous = state.sessionViews[sessionId];
+        if (!previous?.review) return {};
+        const sessionViews = {
+          ...state.sessionViews,
+          [sessionId]: { ...previous, review: { ...previous.review, loading: false } },
+        };
+        return { sessionViews, ...activeProjection(sessionViews, sessionId) };
+      });
+    },
   };
 });
