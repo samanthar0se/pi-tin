@@ -98,41 +98,41 @@ main { min-width: 0; min-height: 0; height: 100%; display: flex; flex-direction:
 
 .thread-root, .thread-viewport { height: 100%; }
 .thread-viewport { overflow-y: auto; scroll-behavior: smooth; scrollbar-color: var(--line-strong) transparent; }
-.thread-column { width: min(100%, 760px); min-height: 100%; margin: auto; padding: 36px 24px 0; display: flex; flex-direction: column; }
+.thread-column { width: min(100%, 768px); min-height: 100%; margin: auto; padding: 30px 28px 0; display: flex; flex-direction: column; }
 .welcome { margin: auto; padding-bottom: 120px; text-align: center; }
 .pi-mark { width: 42px; height: 42px; margin: 0 auto 22px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); font: 26px Georgia, serif; }
 .welcome h2 { margin: 0 0 10px; font-size: 28px; font-weight: 500; letter-spacing: -.035em; }
 .welcome p { max-width: 430px; margin: 0 auto; color: var(--muted); font-size: 13px; line-height: 1.55; }
-.message { position: relative; margin-bottom: 30px; font-size: 15px; line-height: 1.55; }
+.message { position: relative; margin-bottom: 24px; font-size: 14px; line-height: 1.6; }
 .user-message { display: flex; justify-content: flex-end; }
-.user-bubble { max-width: 78%; padding: 11px 16px; border-radius: 20px; background: var(--user); white-space: pre-wrap; }
-.assistant-message { padding-right: 24px; }
+.user-bubble { max-width: 77%; min-width: 0; padding: 8px 12px; overflow: hidden; border-radius: 16px; background: color-mix(in srgb, var(--text) 5%, transparent); overflow-wrap: anywhere; white-space: pre-wrap; }
+.assistant-message { min-width: 0; }
 .assistant-content { min-width: 0; }
-.message-actions { position: absolute; left: -8px; bottom: -27px; display: flex; opacity: 0; transition: opacity .15s; }
-.assistant-message:hover .message-actions { opacity: 1; }
-.message-actions button { width: 30px; height: 30px; color: var(--muted); }
+.message-actions { height: 20px; margin: 5px 0 -10px -7px; display: flex; align-items: center; opacity: 0; transition: opacity .15s; }
+.assistant-message:hover .message-actions, .assistant-message:focus-within .message-actions { opacity: 1; }
+.message-actions button { width: 28px; height: 28px; color: var(--muted); }
 .markdown { overflow-wrap: anywhere; }
 .markdown > *:first-child { margin-top: 0 !important; }
 .markdown > *:last-child { margin-bottom: 0 !important; }
-.markdown p { margin: 0 0 1em; }
+.markdown p { margin: 0 0 .85em; }
 .markdown ul, .markdown ol { margin: .55em 0 1em; padding-left: 1.4em; }
 .markdown ul { list-style: disc; }
 .markdown ol { list-style: decimal; }
 .markdown li { margin: .35em 0; padding-left: .15em; }
 .markdown li::marker { color: var(--muted); }
 .markdown li > p { margin: 0; }
-.markdown pre { overflow: auto; border: 1px solid var(--line); background: var(--panel) !important; border-radius: 13px; padding: 14px !important; font-size: 12px; }
+.markdown pre { overflow: auto; border: 1px solid var(--line); background: var(--panel) !important; border-radius: 10px; padding: 13px !important; font-size: 12px; }
 .markdown pre, .markdown code { font-family: var(--font-mono); }
 .markdown code:not(pre code) { padding: 0; background: transparent; font-size: .9em; }
 .markdown a { color: var(--work); }
 .markdown table { display: block; overflow: auto; border-collapse: collapse; }
 .markdown th, .markdown td { border: 1px solid var(--line); padding: 6px 10px; }
-.reasoning { margin: 0 0 16px; color: var(--muted); font-size: 13px; }
-.reasoning summary { width: fit-content; padding: 4px 8px; display: flex; align-items: center; gap: 7px; border-radius: 7px; cursor: pointer; font-weight: 500; list-style: none; }
-.reasoning summary:hover { background: var(--panel); }
+.reasoning { margin: 0 0 14px; color: color-mix(in srgb, var(--text) 58%, transparent); font-size: 13px; }
+.reasoning summary { width: fit-content; max-width: 100%; padding: 3px 1px; display: flex; align-items: center; gap: 6px; border-radius: 6px; cursor: pointer; font-weight: 400; list-style: none; transition: color .15s; }
+.reasoning summary:hover { color: var(--text); }
 .reasoning summary::-webkit-details-marker { display: none; }
-.reasoning summary em { font-size: 11px; font-style: normal; font-weight: 400; opacity: .65; }
 .reasoning summary .rotate { transform: rotate(180deg); }
+.reasoning summary > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .thinking-shimmer {
   color: transparent;
   background: linear-gradient(90deg, var(--text) 0 40%, color-mix(in srgb, var(--bg) 90%, var(--text)) 50%, var(--text) 60% 100%);
@@ -142,11 +142,13 @@ main { min-width: 0; min-height: 0; height: 100%; display: flex; flex-direction:
   animation: thinking-shimmer 2.4s linear infinite;
 }
 .task-activity.error summary { color: var(--danger); }
-.task-activity-content { margin: 7px 0 0 8px; padding-left: 12px; border-left: 2px solid var(--line); line-height: 1.55; }
+.task-activity-content { margin: 6px 0 0 6px; padding-left: 12px; border-left: 1px solid var(--line-strong); line-height: 1.55; }
 .reasoning-text { margin: 0 0 10px; white-space: pre-wrap; }
 .task-activity-content .markdown { font-size: 13px; }
 .task-activity-content .tool-card { margin: 5px 0; border: 0; border-radius: 8px; background: transparent; }
-.task-activity-content .tool-trigger { min-height: 34px; padding: 0 8px; }
+.task-activity-content .tool-trigger { min-height: 31px; padding: 0 6px; color: color-mix(in srgb, var(--text) 68%, transparent); }
+.task-activity-content .tool-trigger:hover { color: var(--text); }
+.task-activity-content .tool-status { opacity: .72; }
 
 .tool-card { margin: 10px 0; border: 1px solid var(--line); border-radius: 13px; background: var(--bg); overflow: hidden; }
 .tool-card.error { border-color: #d66a6380; }
@@ -160,9 +162,9 @@ main { min-width: 0; min-height: 0; height: 100%; display: flex; flex-direction:
 .tool-details pre { max-height: 290px; overflow: auto; margin: 0 0 10px; padding: 10px; border-radius: 8px; background: var(--bg); white-space: pre-wrap; font: 11px/1.5 var(--font-mono); }
 .thinking-placeholder { padding: 8px 2px; color: var(--muted); font-size: 13px; }
 
-.composer-footer { position: sticky; bottom: 0; margin-top: auto; padding: 20px 0 26px; background: linear-gradient(transparent, var(--bg) 24%); }
-.composer { position: relative; padding: 12px 12px 9px; border: 1px solid var(--line-strong); border-radius: 22px; background: var(--bg); box-shadow: 0 8px 28px #0000000a, 0 2px 8px #0000000a; }
-.composer:focus-within { border-color: #b7b7b7; box-shadow: 0 8px 30px #00000010, 0 0 0 1px var(--line); }
+.composer-footer { position: sticky; bottom: 0; margin-top: auto; padding: 18px 0 22px; background: linear-gradient(transparent, var(--bg) 24%); }
+.composer { position: relative; padding: 10px 10px 8px; border: 1px solid var(--line-strong); border-radius: 24px; background: color-mix(in srgb, var(--panel) 26%, var(--bg)); box-shadow: 0 8px 28px #0000000a, 0 2px 8px #0000000a; }
+.composer:focus-within { border-color: color-mix(in srgb, var(--text) 32%, var(--line)); box-shadow: 0 8px 30px #0000000d; }
 .command-completion { position: absolute; z-index: 10; left: 0; right: 0; bottom: calc(100% + 8px); max-height: 260px; padding: 6px; overflow-y: auto; border: 1px solid var(--line-strong); border-radius: 14px; background: var(--bg); box-shadow: 0 14px 40px #0002; }
 .command-completion button { width: 100%; padding: 8px 10px; display: flex; align-items: center; gap: 12px; border: 0; border-radius: 9px; background: transparent; cursor: pointer; text-align: left; }
 .command-completion button:hover, .command-completion button[aria-selected="true"] { background: var(--panel); }
@@ -170,7 +172,7 @@ main { min-width: 0; min-height: 0; height: 100%; display: flex; flex-direction:
 .command-completion strong { overflow: hidden; text-overflow: ellipsis; color: var(--text); font: 600 12px var(--font-mono); }
 .command-completion small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 10px; }
 .command-completion em { flex: none; color: var(--muted); font-size: 9px; font-style: normal; text-transform: capitalize; }
-.composer textarea { width: 100%; min-height: 48px; max-height: 190px; resize: none; border: 0; outline: 0; padding: 2px 5px 10px; color: var(--text); background: transparent; font-size: 15px; line-height: 1.5; }
+.composer textarea { width: 100%; min-height: 44px; max-height: 190px; resize: none; border: 0; outline: 0; padding: 3px 6px 8px; color: var(--text); background: transparent; font-size: 14px; line-height: 1.5; }
 .composer textarea::placeholder { color: #8e8e8e; }
 .composer-images { display: flex; gap: 8px; padding: 0 3px 10px; overflow-x: auto; }
 .composer-image { position: relative; width: 72px; height: 72px; flex: none; overflow: hidden; border: 1px solid var(--line); border-radius: 11px; background: var(--panel); }

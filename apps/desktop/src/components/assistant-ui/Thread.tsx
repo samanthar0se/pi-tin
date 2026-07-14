@@ -9,7 +9,7 @@ import {
   useAssistantState,
   type ImageMessagePartProps,
 } from "@assistant-ui/react";
-import { ArrowDown, ArrowUp, Brain, Check, ChevronDown, Copy, LoaderCircle, Sparkles, Square, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Brain, Check, ChevronDown, Copy, FileSearch, Globe2, LoaderCircle, PencilLine, Sparkles, Square, Terminal, Wrench, X } from "lucide-react";
 import type { ImageInput, SlashCommand } from "@pi-tin/protocol";
 import { toast } from "sonner";
 import { MarkdownText } from "./MarkdownText";
@@ -141,6 +141,60 @@ export function isTaskActivityRunning(parts: readonly any[], indices: readonly n
   return messageRunning || indices.some((index) => parts[index]?.type === "tool-call" && parts[index]?.result === undefined);
 }
 
+type ActivityKind = "command" | "edit" | "read" | "search" | "web" | "tool" | "thinking";
+
+function classifyTool(toolName: string): ActivityKind {
+  const name = toolName.toLowerCase().replaceAll("-", "_");
+  if (["apply_patch", "edit", "write"].some((value) => name.includes(value))) return "edit";
+  if (["web_search", "fetch_content", "get_search_content"].some((value) => name.includes(value))) return "web";
+  if (["grep", "glob", "find", "search"].some((value) => name.includes(value))) return "search";
+  if (["bash", "shell", "exec", "command", "terminal"].some((value) => name.includes(value))) return "command";
+  if (["read", "list"].some((value) => name.includes(value)) || /(^|[_.])ls$/.test(name)) return "read";
+  return "tool";
+}
+
+function lowercaseActivityLabel(label: string): string {
+  return `${label.charAt(0).toLowerCase()}${label.slice(1)}`;
+}
+
+function formatActivityList(labels: string[]): string {
+  if (labels.length < 2) return labels[0] ?? "Thinking";
+  const following = labels.slice(1).map(lowercaseActivityLabel);
+  if (labels.length === 2) return `${labels[0]} and ${following[0]}`;
+  return `${labels[0]}, ${following.slice(0, -1).join(", ")}, and ${following.at(-1)}`;
+}
+
+export function summarizeTaskActivity(tools: readonly { toolName?: string; result?: unknown }[], running: boolean): { kind: ActivityKind; label: string } {
+  const relevant = running ? tools.filter((tool) => tool.result === undefined) : tools;
+  const counts = new Map<ActivityKind, number>();
+  relevant.forEach((tool) => {
+    const kind = classifyTool(tool.toolName ?? "tool");
+    counts.set(kind, (counts.get(kind) ?? 0) + 1);
+  });
+  if (counts.size === 0) return { kind: "thinking", label: "Thinking" };
+  const labels = [...counts].map(([kind, count]) => {
+    if (running) return ({ command: "Running commands", edit: "Editing files", read: "Reading files", search: "Searching code", web: "Searching the web", tool: "Using tools", thinking: "Thinking" })[kind];
+    return ({
+      command: count === 1 ? "Ran a command" : "Ran commands",
+      edit: count === 1 ? "Edited a file" : "Edited files",
+      read: count === 1 ? "Read a file" : "Read files",
+      search: "Searched code",
+      web: "Searched the web",
+      tool: count === 1 ? "Used a tool" : "Used tools",
+      thinking: "Thought",
+    })[kind];
+  });
+  return { kind: counts.keys().next().value ?? "tool", label: formatActivityList(labels) };
+}
+
+function ActivityIcon({ kind }: { kind: ActivityKind }) {
+  if (kind === "command") return <Terminal size={14} />;
+  if (kind === "edit") return <PencilLine size={14} />;
+  if (kind === "read" || kind === "search") return <FileSearch size={14} />;
+  if (kind === "web") return <Globe2 size={14} />;
+  return <Wrench size={14} />;
+}
+
 function TaskActivity({ groupKey, indices, children }: { groupKey: string | undefined; indices: number[]; children?: ReactNode }) {
   const [open, setOpen] = useState(false);
   const parts = useAssistantState((state) => state.message.parts);
@@ -149,8 +203,9 @@ function TaskActivity({ groupKey, indices, children }: { groupKey: string | unde
   const tools = indices.map((index) => parts[index]).filter((part) => part?.type === "tool-call");
   const running = isTaskActivityRunning(parts, indices, messageRunning);
   const failed = tools.some((part) => part?.type === "tool-call" && part.isError);
+  const summary = summarizeTaskActivity(tools, running);
   return <details className={`reasoning task-activity ${failed ? "error" : ""}`} open={open} onToggle={(event) => setOpen(event.currentTarget.open)}>
-    <summary>{running && <LoaderCircle className="spin" size={14} />}<span className={running ? "thinking-shimmer" : undefined}>Thinking</span>{running && <em>Working</em>}<ChevronDown className={open ? "rotate" : ""} size={14} /></summary>
+    <summary>{running ? <LoaderCircle className="spin" size={14} /> : <ActivityIcon kind={summary.kind} />}<span className={running ? "thinking-shimmer" : undefined}>{summary.label}</span><ChevronDown className={open ? "rotate" : ""} size={14} /></summary>
     <div className="task-activity-content">{children}</div>
   </details>;
 }
