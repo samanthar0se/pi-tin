@@ -71,9 +71,8 @@ function TaskActivity({ groupKey, indices, children }: { groupKey: string | unde
   const tools = indices.map((index) => parts[index]).filter((part) => part?.type === "tool-call");
   const running = messageRunning || tools.some((part) => part?.type === "tool-call" && part.result === undefined);
   const failed = tools.some((part) => part?.type === "tool-call" && part.isError);
-  const detail = tools.length ? `${tools.length} action${tools.length === 1 ? "" : "s"}` : "reasoning";
   return <details className={`reasoning task-activity ${failed ? "error" : ""}`} open={open} onToggle={(event) => setOpen(event.currentTarget.open)}>
-    <summary>{running && <LoaderCircle className="spin" size={14} />}<span className={running ? "thinking-shimmer" : undefined}>Thinking</span><em>{running ? "Working" : detail}</em><ChevronDown className={open ? "rotate" : ""} size={14} /></summary>
+    <summary>{running && <LoaderCircle className="spin" size={14} />}<span className={running ? "thinking-shimmer" : undefined}>Thinking</span>{running && <em>Working</em>}<ChevronDown className={open ? "rotate" : ""} size={14} /></summary>
     <div className="task-activity-content">{children}</div>
   </details>;
 }
@@ -97,7 +96,7 @@ function CopyIcon() {
 
 function RunningDot() {
   const running = useAssistantState((s) => s.message.status?.type === "running" && s.message.parts.length === 0);
-  return running ? <div className="thinking-dot"><i /><i /><i /></div> : null;
+  return running ? <div className="thinking-placeholder"><span className="thinking-shimmer">Thinking</span></div> : null;
 }
 
 type DisplayCommand = SlashCommand | { name: "new"; description: string; source: "client"; scope: "temporary" };
