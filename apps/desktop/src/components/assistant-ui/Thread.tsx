@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import {
   ActionBarPrimitive,
   ComposerPrimitive,
@@ -7,7 +7,7 @@ import {
   useAssistantApi,
   useAssistantState,
 } from "@assistant-ui/react";
-import { ArrowDown, ArrowUp, Brain, Check, ChevronDown, Copy, Sparkles, Square } from "lucide-react";
+import { ArrowDown, ArrowUp, Brain, Check, ChevronDown, Copy, LoaderCircle, Sparkles, Square } from "lucide-react";
 import type { SlashCommand } from "@pi-remote/protocol";
 import { toast } from "sonner";
 import { MarkdownText } from "./MarkdownText";
@@ -48,16 +48,39 @@ function UserMessage() {
 }
 
 function Reasoning({ text }: { text: string }) {
+  return text ? <div className="reasoning-text">{text}</div> : null;
+}
+
+function groupTaskParts(parts: readonly any[]) {
+  let lastToolIndex = -1;
+  parts.forEach((part, index) => { if (part.type === "tool-call") lastToolIndex = index; });
+  const activity: number[] = [];
+  const visible: { groupKey: undefined; indices: number[] }[] = [];
+  parts.forEach((part, index) => {
+    if (part.type === "reasoning" || part.type === "tool-call" || index < lastToolIndex) activity.push(index);
+    else visible.push({ groupKey: undefined, indices: [index] });
+  });
+  return [...(activity.length ? [{ groupKey: "task-activity", indices: activity }] : []), ...visible];
+}
+
+function TaskActivity({ groupKey, indices, children }: { groupKey: string | undefined; indices: number[]; children?: ReactNode }) {
   const [open, setOpen] = useState(false);
-  return <details className="reasoning" open={open} onToggle={(event) => setOpen(event.currentTarget.open)}>
-    <summary>Thinking <span>{open ? "hide" : "show"}</span></summary><div>{text}</div>
+  const parts = useAssistantState((state) => state.message.parts);
+  if (!groupKey) return <>{children}</>;
+  const tools = indices.map((index) => parts[index]).filter((part) => part?.type === "tool-call");
+  const running = tools.some((part) => part?.type === "tool-call" && part.result === undefined);
+  const failed = tools.some((part) => part?.type === "tool-call" && part.isError);
+  const detail = tools.length ? `${tools.length} action${tools.length === 1 ? "" : "s"}` : "reasoning";
+  return <details className={`reasoning task-activity ${failed ? "error" : ""}`} open={open} onToggle={(event) => setOpen(event.currentTarget.open)}>
+    <summary>{running && <LoaderCircle className="spin" size={14} />}<span>Thinking</span><em>{running ? "Working" : detail}</em><ChevronDown className={open ? "rotate" : ""} size={14} /></summary>
+    <div className="task-activity-content">{children}</div>
   </details>;
 }
 
 function AssistantMessage() {
   return <MessagePrimitive.Root className="message assistant-message">
     <div className="assistant-content">
-      <MessagePrimitive.Parts components={{ Text: MarkdownText, Reasoning, tools: { Fallback: ToolCard } }} />
+      <MessagePrimitive.Unstable_PartsGrouped groupingFunction={groupTaskParts} components={{ Text: MarkdownText, Reasoning, Group: TaskActivity, tools: { Fallback: ToolCard } }} />
       <RunningDot />
     </div>
     <ActionBarPrimitive.Root hideWhenRunning autohide="not-last" className="message-actions">

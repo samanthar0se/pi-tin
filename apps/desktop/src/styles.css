@@ -98,10 +98,17 @@ main { min-width: 0; min-height: 0; height: 100%; display: flex; flex-direction:
 .markdown table { display: block; overflow: auto; border-collapse: collapse; }
 .markdown th, .markdown td { border: 1px solid var(--line); padding: 6px 10px; }
 .reasoning { margin: 0 0 16px; color: var(--muted); font-size: 13px; }
-.reasoning summary { width: fit-content; padding: 4px 8px; border-radius: 7px; cursor: pointer; font-weight: 500; list-style: none; }
+.reasoning summary { width: fit-content; padding: 4px 8px; display: flex; align-items: center; gap: 7px; border-radius: 7px; cursor: pointer; font-weight: 500; list-style: none; }
 .reasoning summary:hover { background: var(--panel); }
-.reasoning summary span { margin-left: 5px; font-weight: 400; opacity: .65; }
-.reasoning > div { margin: 7px 0 0 8px; padding-left: 12px; border-left: 2px solid var(--line); white-space: pre-wrap; line-height: 1.55; }
+.reasoning summary::-webkit-details-marker { display: none; }
+.reasoning summary em { font-size: 11px; font-style: normal; font-weight: 400; opacity: .65; }
+.reasoning summary .rotate { transform: rotate(180deg); }
+.task-activity.error summary { color: var(--danger); }
+.task-activity-content { margin: 7px 0 0 8px; padding-left: 12px; border-left: 2px solid var(--line); line-height: 1.55; }
+.reasoning-text { margin: 0 0 10px; white-space: pre-wrap; }
+.task-activity-content .markdown { font-size: 13px; }
+.task-activity-content .tool-card { margin: 5px 0; border: 0; border-radius: 8px; background: transparent; }
+.task-activity-content .tool-trigger { min-height: 34px; padding: 0 8px; }
 
 .tool-card { margin: 10px 0; border: 1px solid var(--line); border-radius: 13px; background: var(--bg); overflow: hidden; }
 .tool-card.error { border-color: #d66a6380; }

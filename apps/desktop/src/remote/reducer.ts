@@ -14,11 +14,13 @@ export type SessionState = {
   isRunning: boolean;
   contextUsage: ContextUsage | null;
   planPhase: "idle" | "planning" | "executing" | "reviewing";
+  activeAssistantPartStart: number | null;
 };
 
 export const emptySession: SessionState = {
   messages: [], sessionFile: null, sessionName: null, cwd: "", model: null,
   availableModels: [], commands: [], thinkingLevel: "off", isRunning: false, contextUsage: null, planPhase: "idle",
+  activeAssistantPartStart: null,
 };
 
 function asObject(value: unknown): Record<string, any> {
@@ -54,6 +56,16 @@ export function normalizeEntries(entries: unknown[]): UiMessage[] {
     const message = asObject(entry.message);
     if (message.role === "user" || message.role === "assistant") {
       const parts = contentParts(message);
+      const previous = messages.at(-1);
+      if (message.role === "assistant" && previous?.role === "assistant") {
+        const offset = (previous.content as any[]).length;
+        (previous as any).content = [...previous.content as any[], ...parts];
+        (previous as any).status = message.stopReason === "error" ? { type: "incomplete", reason: "error" } : { type: "complete", reason: "stop" };
+        parts.forEach((part, partIndex) => {
+          if (part.type === "tool-call" && part.toolCallId) toolLocations.set(part.toolCallId, { message: previous, index: offset + partIndex });
+        });
+        return;
+      }
       const normalized: UiMessage = {
         id: messageId(entry, index), role: message.role, content: parts,
         createdAt: entry.timestamp ? new Date(entry.timestamp) : undefined,
@@ -89,7 +101,7 @@ export function replaceFromSnapshot(snapshot: Snapshot): SessionState {
     messages: normalizeEntries(snapshot.entries), sessionFile: snapshot.sessionFile,
     sessionName: snapshot.sessionName, cwd: snapshot.cwd, model: snapshot.model,
     availableModels: [...snapshot.availableModels], commands: [...snapshot.commands], thinkingLevel: snapshot.thinkingLevel,
-    isRunning: snapshot.isRunning, contextUsage: snapshot.contextUsage, planPhase: snapshot.planPhase,
+    isRunning: snapshot.isRunning, contextUsage: snapshot.contextUsage, planPhase: snapshot.planPhase, activeAssistantPartStart: null,
   };
 }
 
@@ -115,13 +127,21 @@ export function reducePiEvent(state: SessionState, rawEvent: unknown): SessionSt
     case "message_start": {
       const msg = asObject(event.message);
       if (msg.role !== "assistant" && msg.role !== "user") return state;
+      const initialParts = contentParts(msg);
+      const previous = state.messages.at(-1);
+      if (msg.role === "assistant" && previous?.role === "assistant") {
+        const start = (previous.content as any[]).length;
+        return { ...state, activeAssistantPartStart: start, messages: updateLastAssistant(state.messages, (message) => ({
+          ...message, content: [...message.content as any[], ...initialParts], status: { type: "running" },
+        } as UiMessage)) };
+      }
       const next: UiMessage = {
         id: String(msg.id ?? `live-${Date.now()}-${state.messages.length}`), role: msg.role,
-        content: contentParts(msg),
+        content: initialParts,
         ...(msg.role === "assistant" ? { status: { type: "running" } } : {}),
       } as UiMessage;
       const duplicate = state.messages.some((item) => item.id === next.id);
-      return duplicate ? state : { ...state, messages: [...state.messages, next] };
+      return duplicate ? state : { ...state, activeAssistantPartStart: msg.role === "assistant" ? 0 : null, messages: [...state.messages, next] };
     }
     case "message_update": {
       const delta = asObject(event.assistantMessageEvent);
@@ -138,14 +158,26 @@ export function reducePiEvent(state: SessionState, rawEvent: unknown): SessionSt
     case "message_end": {
       const msg = asObject(event.message);
       if (msg.role !== "assistant") return state;
+      const finalizedParts = contentParts(msg);
       return { ...state, messages: updateLastAssistant(state.messages, (current) => ({
-        ...current, content: contentParts(msg), status: msg.stopReason === "error" ? { type: "incomplete", reason: "error" } : { type: "complete", reason: "stop" },
-      } as UiMessage)) };
+        ...current,
+        content: state.activeAssistantPartStart === null
+          ? finalizedParts
+          : [...(current.content as any[]).slice(0, state.activeAssistantPartStart), ...finalizedParts],
+        status: msg.stopReason === "error" ? { type: "incomplete", reason: "error" } : { type: "complete", reason: "stop" },
+      } as UiMessage)), activeAssistantPartStart: null };
     }
     case "tool_execution_start":
-      return { ...state, messages: updateLastAssistant(state.messages, (message) => ({ ...message, content: [...message.content as any[], {
-        type: "tool-call", toolCallId: String(event.toolCallId), toolName: String(event.toolName), args: asObject(event.args), argsText: JSON.stringify(event.args ?? {}, null, 2),
-      }] } as UiMessage)) };
+      return { ...state, messages: updateLastAssistant(state.messages, (message) => {
+        const parts = [...message.content as any[]];
+        const index = parts.findIndex((part) => part.type === "tool-call" && part.toolCallId === event.toolCallId);
+        const toolPart = {
+          type: "tool-call", toolCallId: String(event.toolCallId), toolName: String(event.toolName), args: asObject(event.args), argsText: JSON.stringify(event.args ?? {}, null, 2),
+        };
+        if (index < 0) parts.push(toolPart);
+        else parts[index] = { ...parts[index], ...toolPart };
+        return { ...message, content: parts, status: { type: "running" } } as UiMessage;
+      }) };
     case "tool_execution_update":
     case "tool_execution_end":
       return { ...state, messages: updateLastAssistant(state.messages, (message) => ({ ...message, content: (message.content as any[]).map((part) =>
