@@ -76,6 +76,12 @@ if (!existsSync(resolve(extensionDir, "index.mjs"))) {
 // updates the built files in place and makes installation idempotent.
 run("pi", ["install", extensionDir], { label: "Installing or refreshing the Pi Tin extension" });
 
+if (process.platform === "win32") {
+  run("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", resolve(root, "configure-host-startup-windows.ps1")], {
+    label: "Installing the interactive Windows host startup shortcut",
+  });
+}
+
 if (!skipPlannotator) {
   run("pi", ["install", "npm:@plannotator/pi-extension"], { label: "Ensuring Plannotator is installed" });
   run("pi", ["update", "--extension", "npm:@plannotator/pi-extension"], { label: "Updating Plannotator" });
@@ -85,6 +91,7 @@ console.log("\nHost controller build and settings extension installation complet
 console.log("Restart any running Pi process so it reloads the settings extension.");
 console.log("Start remote session control with: node ./start-host.mjs");
 console.log("The host prints its generated token at startup; /pi-tin can also display or rotate it in a TUI.");
+if (process.platform === "win32") console.log("Windows starts the foreground host after interactive sign-in; Session 0 launches are rejected so computer-use extensions can access the desktop.");
 console.log("\nOptional port settings before starting Pi:");
 if (process.platform === "win32") {
   console.log("  $env:PI_TIN_PORT=\"31415\"");

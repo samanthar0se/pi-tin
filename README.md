@@ -26,7 +26,7 @@ On Windows PowerShell, the same command is:
 node .\build-host.mjs
 ```
 
-The builder installs dependencies, runs focused validation, bundles the foreground host controller, installs the small `/pi-tin` settings extension, and installs/updates Plannotator. Build output is published atomically, and the prior complete host and extension bundles are retained for rollback.
+The builder installs dependencies, runs focused validation, bundles the foreground host controller, installs the small `/pi-tin` settings extension, and installs/updates Plannotator. On Windows it also installs an idempotent per-user Startup shortcut that launches the foreground host after interactive sign-in. Build output is published atomically, and the prior complete host and extension bundles are retained for rollback.
 
 After the initial build, start remote control from the repository root:
 
@@ -38,6 +38,15 @@ node ./start-host.mjs
 ```
 
 The controller prints its cryptographically random token at startup and persists it in `~/.pi/agent/pi-tin.json`. It restores up to five open Pi `--mode rpc` children after restart. Each runtime has an immutable working directory and restores its current native Pi session. Run a separate normal TUI process only when local terminal use is wanted; it is independent of the controller.
+
+On Windows, the host must run in the signed-in user's interactive desktop session so computer-use extensions can see and control visible applications. `start-host.mjs` refuses Windows Session 0 instead of starting unusable RPC children. The Startup shortcut created by `build-host.mjs` starts `start-host-windows.ps1` in a visible PowerShell window after login. Reinstall or remove that shortcut explicitly with:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\configure-host-startup-windows.ps1
+powershell -ExecutionPolicy Bypass -File .\configure-host-startup-windows.ps1 -Remove
+```
+
+The shortcut runs after user login, not before login, because Windows Session 0 cannot access the interactive desktop. Keep the foreground PowerShell window open while remote control is needed.
 
 Upgrading from Pi Remote automatically migrates the existing host token and session state. The `PI_REMOTE_HOST`, `PI_REMOTE_PORT`, and `PI_REMOTE_CWD` variables remain supported as fallbacks; prefer the new `PI_TIN_*` names.
 
