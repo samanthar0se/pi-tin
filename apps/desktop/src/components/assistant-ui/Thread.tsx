@@ -111,11 +111,19 @@ function Reasoning({ text }: { text: string }) {
   return text ? <div className="reasoning-text">{text}</div> : null;
 }
 
-function groupTaskParts(parts: readonly any[]) {
+export function groupTaskParts(parts: readonly any[]) {
   const groups: { groupKey: string | undefined; indices: number[] }[] = [];
   let activityGroup: { groupKey: string; indices: number[] } | undefined;
+  let lastActivityIndex = -1;
+  for (let index = parts.length - 1; index >= 0; index--) {
+    if (parts[index]?.type === "reasoning" || parts[index]?.type === "tool-call") {
+      lastActivityIndex = index;
+      break;
+    }
+  }
   parts.forEach((part, index) => {
-    if (part.type === "reasoning" || part.type === "tool-call") {
+    const belongsToActivity = index <= lastActivityIndex && (part.type === "text" || part.type === "reasoning" || part.type === "tool-call");
+    if (belongsToActivity) {
       if (!activityGroup) {
         activityGroup = { groupKey: `task-activity-${groups.length}`, indices: [] };
         groups.push(activityGroup);
@@ -138,7 +146,9 @@ export function isTaskActivityRunning(parts: readonly any[], indices: readonly n
     }
   }
   if (!indices.includes(latestActivityIndex)) return false;
-  return messageRunning || indices.some((index) => parts[index]?.type === "tool-call" && parts[index]?.result === undefined);
+  if (indices.some((index) => parts[index]?.type === "tool-call" && parts[index]?.result === undefined)) return true;
+  const finalAnswerStarted = parts.slice(latestActivityIndex + 1).some((part) => part?.type !== "text" || String(part.text || "").trim().length > 0);
+  return messageRunning && !finalAnswerStarted;
 }
 
 type ActivityKind = "command" | "edit" | "read" | "search" | "web" | "tool" | "thinking";

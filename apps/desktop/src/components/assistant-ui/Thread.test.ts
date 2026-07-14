@@ -1,5 +1,28 @@
 import { describe, expect, it } from "vitest";
-import { isTaskActivityRunning, summarizeTaskActivity } from "./Thread";
+import { groupTaskParts, isTaskActivityRunning, summarizeTaskActivity } from "./Thread";
+
+describe("task activity grouping", () => {
+  it("folds progress text and tools into one work slice", () => {
+    const parts = [
+      { type: "text", text: "Checking the project." },
+      { type: "tool-call", toolName: "read", result: "file" },
+      { type: "text", text: "Now running the tests." },
+      { type: "tool-call", toolName: "bash", result: "ok" },
+      { type: "text", text: "Everything passes." },
+    ];
+
+    expect(groupTaskParts(parts)).toEqual([
+      { groupKey: "task-activity-0", indices: [0, 1, 2, 3] },
+      { groupKey: undefined, indices: [4] },
+    ]);
+  });
+
+  it("leaves text-only responses ungrouped", () => {
+    expect(groupTaskParts([{ type: "text", text: "A direct answer." }])).toEqual([
+      { groupKey: undefined, indices: [0] },
+    ]);
+  });
+});
 
 describe("task activity status", () => {
   it("marks only the latest activity group as running", () => {
@@ -23,6 +46,15 @@ describe("task activity status", () => {
     ];
 
     expect(isTaskActivityRunning(parts, [0, 1], false)).toBe(true);
+  });
+
+  it("stops the work indicator when the final answer starts", () => {
+    const parts = [
+      { type: "tool-call", toolCallId: "tool-1", result: "done" },
+      { type: "text", text: "Here is the result." },
+    ];
+
+    expect(isTaskActivityRunning(parts, [0], true)).toBe(false);
   });
 });
 
