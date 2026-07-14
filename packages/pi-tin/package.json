@@ -1,5 +1,5 @@
 {
-  "name": "@pi-remote/pi-extension",
+  "name": "@pi-tin/pi-extension",
   "version": "0.1.0",
   "type": "module",
   "description": "Token-authenticated LAN remote control extension for Pi",

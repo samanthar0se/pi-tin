@@ -1,1 +1,1 @@
-fn main() { pi_remote_lib::run(); }
+fn main() { pi_tin_lib::run(); }

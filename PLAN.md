@@ -1,4 +1,4 @@
-# Remote Pi Windows Client — MVP Plan
+# Pi Tin Windows Client — MVP Plan
 
 > The original attach-only transport evolved into a foreground Pi RPC host controller. The product remains intentionally limited to one configured host and one persistent session.
 
@@ -36,7 +36,7 @@ Greenfield pnpm workspace; critical paths expected:
 - `apps/desktop/src/components/assistant-ui/` — copied and restyled assistant-ui primitives/tool cards
 - `apps/desktop/src/components/review/ReviewPanel.tsx` — embedded Plannotator lifecycle/loading/error UI
 - `packages/protocol/src/index.ts` — versioned JSON message types and Zod validation
-- `packages/pi-remote/index.ts` — minimal Pi extension server, event forwarding, commands, token checks, and Plannotator bridge
+- `packages/pi-tin/index.ts` — minimal Pi extension server, event forwarding, commands, token checks, and Plannotator bridge
 - `README.md` — remote Pi install/config/start and Windows app usage
 
 ## Reuse

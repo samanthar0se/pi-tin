@@ -11,7 +11,7 @@ if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
 
 $insideWorkTree = (& git rev-parse --is-inside-work-tree 2>$null).Trim()
 if ($LASTEXITCODE -ne 0 -or $insideWorkTree -ne "true") {
-    throw "$PSScriptRoot is not a Git working tree. Run this script from a clone of the Pi Remote repository."
+    throw "$PSScriptRoot is not a Git working tree. Run this script from a clone of the Pi Tin repository."
 }
 
 $upstream = (& git rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>$null).Trim()
@@ -19,7 +19,7 @@ if ($LASTEXITCODE -ne 0 -or -not $upstream) {
     throw "The current branch has no upstream branch. Configure one before updating."
 }
 
-Write-Host "Fetching Pi Remote updates from $upstream..." -ForegroundColor Cyan
+Write-Host "Fetching Pi Tin updates from $upstream..." -ForegroundColor Cyan
 git fetch --prune
 if ($LASTEXITCODE -ne 0) { throw "Could not fetch repository updates. Check the network and Git credentials." }
 
@@ -52,6 +52,6 @@ if ($behindCount -gt 0) {
 
 $revision = (git rev-parse --short HEAD).Trim()
 if ($LASTEXITCODE -ne 0) { throw "Could not determine the updated Git revision." }
-Write-Host "Pi Remote source is now at revision $revision." -ForegroundColor Green
+Write-Host "Pi Tin source is now at revision $revision." -ForegroundColor Green
 
 & "$PSScriptRoot\run-windows.ps1"

@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { chmodSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -11,11 +11,14 @@ export interface TokenStore {
 
 export function defaultTokenPath(): string {
   const agentDir = process.env.PI_CODING_AGENT_DIR || join(homedir(), ".pi", "agent");
-  return join(agentDir, "pi-remote.json");
+  return join(agentDir, "pi-tin.json");
 }
 
 export function createTokenStore(path = defaultTokenPath()): TokenStore {
-  let token = readToken(path) || generateAndWriteToken(path);
+  let existingToken = readToken(path);
+  if (!existingToken && path === defaultTokenPath()) existingToken = readToken(legacyTokenPath());
+  if (existingToken && !existsSync(path)) writeToken(path, existingToken);
+  let token = existingToken || generateAndWriteToken(path);
   return {
     path,
     get: () => {
@@ -27,6 +30,11 @@ export function createTokenStore(path = defaultTokenPath()): TokenStore {
       return token;
     },
   };
+}
+
+function legacyTokenPath(): string {
+  const agentDir = process.env.PI_CODING_AGENT_DIR || join(homedir(), ".pi", "agent");
+  return join(agentDir, "pi-remote.json");
 }
 
 function readToken(path: string): string | null {
@@ -42,6 +50,11 @@ function readToken(path: string): string | null {
 
 function generateAndWriteToken(path: string): string {
   const token = randomBytes(32).toString("base64url");
+  writeToken(path, token);
+  return token;
+}
+
+function writeToken(path: string, token: string): void {
   mkdirSync(dirname(path), { recursive: true });
   const temporaryPath = `${path}.${process.pid}.${Date.now()}.tmp`;
   writeFileSync(temporaryPath, `${JSON.stringify({ token }, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
@@ -51,5 +64,4 @@ function generateAndWriteToken(path: string): string {
   } catch {
     // Windows and some network filesystems do not expose POSIX mode bits.
   }
-  return token;
 }

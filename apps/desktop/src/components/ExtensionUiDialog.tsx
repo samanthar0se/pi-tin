@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { X } from "lucide-react";
-import type { ExtensionUiRequest } from "@pi-remote/protocol";
+import type { ExtensionUiRequest } from "@pi-tin/protocol";
 import { useAppStore } from "../remote/store";
 
 export function ExtensionUiDialog({ request }: { request: ExtensionUiRequest }) {

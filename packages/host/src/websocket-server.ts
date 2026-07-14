@@ -1,5 +1,5 @@
 import { createServer, type Server as HttpServer } from "node:http";
-import { PROTOCOL_VERSION, clientMessageSchema, serverMessageSchema, type ServerMessage } from "@pi-remote/protocol";
+import { PROTOCOL_VERSION, clientMessageSchema, serverMessageSchema, type ServerMessage } from "@pi-tin/protocol";
 import { WebSocket, WebSocketServer } from "ws";
 import type { HostBackend } from "./types.ts";
 
@@ -54,7 +54,7 @@ export class HostWebSocketServer {
       const state = this.clients.get(socket);
       if (!state) return;
       if (!state.authenticated && raw?.type === "auth" && raw.version !== PROTOCOL_VERSION) {
-        this.send(socket, { type: "error", code: "protocol_mismatch", message: `Host requires protocol v${PROTOCOL_VERSION}. Update Pi Remote.` });
+        this.send(socket, { type: "error", code: "protocol_mismatch", message: `Host requires protocol v${PROTOCOL_VERSION}. Update Pi Tin.` });
         socket.close(4002, "Protocol mismatch"); return;
       }
       const parsed = clientMessageSchema.safeParse(raw);

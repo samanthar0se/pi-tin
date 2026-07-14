@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { ReviewFinished, ReviewStarted } from "@pi-remote/protocol";
+import type { ReviewFinished, ReviewStarted } from "@pi-tin/protocol";
 
 export class ReviewTracker {
   active: { id: string; kind: "plan" | "code" } | null = null;

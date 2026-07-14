@@ -4,7 +4,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const sourceDir = resolve(root, "packages/pi-remote");
+const sourceDir = resolve(root, "packages/pi-tin");
 const outDir = resolve(sourceDir, "dist");
 
 await rm(outDir, { recursive: true, force: true });
@@ -23,11 +23,11 @@ await build({
 });
 
 const manifest = {
-  name: "@pi-remote/pi-extension",
+  name: "@pi-tin/pi-extension",
   version: "0.1.0",
   type: "module",
   private: true,
-  description: "Built Pi Remote host extension",
+  description: "Built Pi Tin host extension",
   license: "MIT",
   keywords: ["pi-package"],
   pi: { extensions: ["./index.mjs"] },

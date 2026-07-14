@@ -8,7 +8,7 @@ import {
   useAssistantState,
 } from "@assistant-ui/react";
 import { ArrowDown, ArrowUp, Brain, Check, ChevronDown, Copy, LoaderCircle, Sparkles, Square } from "lucide-react";
-import type { SlashCommand } from "@pi-remote/protocol";
+import type { SlashCommand } from "@pi-tin/protocol";
 import { toast } from "sonner";
 import { MarkdownText } from "./MarkdownText";
 import { ToolCard } from "./ToolCard";

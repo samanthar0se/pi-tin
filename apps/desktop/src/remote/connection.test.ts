@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { PROTOCOL_VERSION } from "@pi-remote/protocol";
+import { PROTOCOL_VERSION } from "@pi-tin/protocol";
 import { PiConnection } from "./connection";
 
 class FakeSocket {

@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { load } from "@tauri-apps/plugin-store";
-import type { ClientCommandInput, ExtensionUiRequest, ReviewStarted, ServerMessage } from "@pi-remote/protocol";
+import type { ClientCommandInput, ExtensionUiRequest, ReviewStarted, ServerMessage } from "@pi-tin/protocol";
 import { PiConnection, type HostProfile } from "./connection";
 import { emptySession, reducePiEvent, replaceFromSnapshot, type SessionState } from "./reducer";
 

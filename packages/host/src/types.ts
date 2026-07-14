@@ -1,4 +1,4 @@
-import type { ClientCommand, ServerMessage } from "@pi-remote/protocol";
+import type { ClientCommand, ServerMessage } from "@pi-tin/protocol";
 
 export interface HostBackend {
   authenticate(token: string): boolean;

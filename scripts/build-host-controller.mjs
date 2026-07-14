@@ -17,4 +17,4 @@ await build({
   sourcemap: true,
   external: ["@earendil-works/pi-coding-agent", "@earendil-works/pi-coding-agent/rpc-entry", "ws"],
 });
-console.log(`Built Pi Remote host controller: ${outDir}`);
+console.log(`Built Pi Tin host controller: ${outDir}`);

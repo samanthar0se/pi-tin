@@ -1,4 +1,4 @@
-import { PROTOCOL_VERSION, parseServerMessage, type ClientCommand, type ClientCommandInput, type ServerMessage } from "@pi-remote/protocol";
+import { PROTOCOL_VERSION, parseServerMessage, type ClientCommand, type ClientCommandInput, type ServerMessage } from "@pi-tin/protocol";
 
 export type HostProfile = {
   host: string;

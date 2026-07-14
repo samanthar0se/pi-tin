@@ -61,7 +61,7 @@ if ($env:OS -ne "Windows_NT") {
 $repoRoot = $PSScriptRoot
 Set-Location $repoRoot
 
-Write-Host "Pi Remote Windows Builder" -ForegroundColor Green
+Write-Host "Pi Tin Windows Builder" -ForegroundColor Green
 Write-Host "Repository: $repoRoot"
 
 if ($InstallPrerequisites) {
@@ -142,28 +142,28 @@ if (-not $SkipTests) {
 
 if (-not $Clean) {
     Write-Step "Invalidating the desktop package while preserving dependency caches"
-    Invoke-Checked "cargo" "clean" "--manifest-path" "apps\desktop\src-tauri\Cargo.toml" "--package" "pi-remote" "--release"
+    Invoke-Checked "cargo" "clean" "--manifest-path" "apps\desktop\src-tauri\Cargo.toml" "--package" "pi-tin" "--release"
 }
 $env:VITE_BUILD_REVISION = (git rev-parse --short HEAD).Trim()
 Write-Host "Desktop source revision: $env:VITE_BUILD_REVISION"
 
 if ($PortableOnly) {
     Write-Step "Building the portable Windows executable"
-    Invoke-Checked "corepack" "pnpm" "--filter" "@pi-remote/desktop" "tauri" "build" "--no-bundle"
+    Invoke-Checked "corepack" "pnpm" "--filter" "@pi-tin/desktop" "tauri" "build" "--no-bundle"
 } else {
     Write-Step "Building the portable executable and NSIS installer"
-    Invoke-Checked "corepack" "pnpm" "--filter" "@pi-remote/desktop" "tauri" "build" "--bundles" "nsis"
+    Invoke-Checked "corepack" "pnpm" "--filter" "@pi-tin/desktop" "tauri" "build" "--bundles" "nsis"
 }
 
 $releaseDirectory = Join-Path $repoRoot "apps\desktop\src-tauri\target\release"
-$portableExecutable = Join-Path $releaseDirectory "pi-remote.exe"
+$portableExecutable = Join-Path $releaseDirectory "pi-tin.exe"
 if (-not (Test-Path $portableExecutable)) {
     throw "Tauri finished, but the portable executable was not found at $portableExecutable"
 }
 
 $artifactDirectory = Join-Path $repoRoot "artifacts"
 New-Item -ItemType Directory -Path $artifactDirectory -Force | Out-Null
-Copy-Item $portableExecutable -Destination (Join-Path $artifactDirectory "Pi-Remote-portable.exe") -Force
+Copy-Item $portableExecutable -Destination (Join-Path $artifactDirectory "Pi-Tin-portable.exe") -Force
 
 if (-not $PortableOnly) {
     $bundleDirectory = Join-Path $releaseDirectory "bundle\nsis"

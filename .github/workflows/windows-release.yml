@@ -24,11 +24,11 @@ jobs:
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Pi-Remote-Windows-portable
-          path: artifacts/Pi-Remote-portable.exe
+          name: Pi-Tin-Windows-portable
+          path: artifacts/Pi-Tin-portable.exe
       - name: Publish release
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
-          files: artifacts/Pi-Remote-portable.exe
+          files: artifacts/Pi-Tin-portable.exe
           generate_release_notes: true

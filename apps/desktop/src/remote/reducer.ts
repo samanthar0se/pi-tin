@@ -1,4 +1,4 @@
-import type { ContextUsage, SlashCommand, Snapshot } from "@pi-remote/protocol";
+import type { ContextUsage, SlashCommand, Snapshot } from "@pi-tin/protocol";
 import type { ThreadMessageLike } from "@assistant-ui/react";
 
 export type UiMessage = ThreadMessageLike & { id: string };

@@ -30,7 +30,7 @@ function hasCommand(command) {
   return !probe.error && probe.status === 0;
 }
 
-console.log("Pi Remote host extension builder/installer");
+console.log("Pi Tin host extension builder/installer");
 console.log(`Repository: ${root}`);
 
 if (!hasCommand("corepack")) {
@@ -50,10 +50,23 @@ if (!skipTests) {
   run("corepack", ["pnpm", "-r", "typecheck"], { label: "Type-checking all packages" });
 }
 
-run("corepack", ["pnpm", "--filter", "@pi-remote/pi-extension", "bundle"], { label: "Building the Pi settings extension" });
-run("corepack", ["pnpm", "--filter", "@pi-remote/host", "bundle"], { label: "Building the Pi Remote host controller" });
+run("corepack", ["pnpm", "--filter", "@pi-tin/pi-extension", "bundle"], { label: "Building the Pi settings extension" });
+run("corepack", ["pnpm", "--filter", "@pi-tin/host", "bundle"], { label: "Building the Pi Tin host controller" });
 
-const extensionDir = resolve(root, "packages/pi-remote/dist");
+const installedPackages = spawnSync("pi", ["list"], {
+  cwd: root,
+  encoding: "utf8",
+  shell: process.platform === "win32",
+});
+const legacyExtensionSource = installedPackages.stdout
+  ?.split(/\r?\n/)
+  .map((line) => line.trim())
+  .find((line) => line.replaceAll("\\", "/").endsWith("/packages/pi-remote/dist"));
+if (legacyExtensionSource) {
+  run("pi", ["remove", legacyExtensionSource], { label: "Removing the legacy Pi Remote extension registration" });
+}
+
+const extensionDir = resolve(root, "packages/pi-tin/dist");
 if (!existsSync(resolve(extensionDir, "index.mjs"))) {
   console.error(`Build completed without producing ${resolve(extensionDir, "index.mjs")}`);
   process.exit(1);
@@ -61,7 +74,7 @@ if (!existsSync(resolve(extensionDir, "index.mjs"))) {
 
 // Local Pi packages remain registered by absolute path. Re-running this command
 // updates the built files in place and makes installation idempotent.
-run("pi", ["install", extensionDir], { label: "Installing or refreshing the Pi Remote extension" });
+run("pi", ["install", extensionDir], { label: "Installing or refreshing the Pi Tin extension" });
 
 if (!skipPlannotator) {
   run("pi", ["install", "npm:@plannotator/pi-extension"], { label: "Ensuring Plannotator is installed" });
@@ -71,14 +84,14 @@ if (!skipPlannotator) {
 console.log("\nHost controller build and settings extension installation complete.");
 console.log("Restart any running Pi process so it reloads the settings extension.");
 console.log("Start remote session control with: node ./start-host.mjs");
-console.log("The host prints its generated token at startup; /pi-remote can also display or rotate it in a TUI.");
+console.log("The host prints its generated token at startup; /pi-tin can also display or rotate it in a TUI.");
 console.log("\nOptional port settings before starting Pi:");
 if (process.platform === "win32") {
-  console.log("  $env:PI_REMOTE_PORT=\"31415\"");
+  console.log("  $env:PI_TIN_PORT=\"31415\"");
   console.log("  $env:PLANNOTATOR_REMOTE=\"1\"");
   console.log("  $env:PLANNOTATOR_PORT=\"19432\"");
 } else {
-  console.log("  export PI_REMOTE_PORT=31415");
+  console.log("  export PI_TIN_PORT=31415");
   console.log("  export PLANNOTATOR_REMOTE=1");
   console.log("  export PLANNOTATOR_PORT=19432");
 }

@@ -3,14 +3,15 @@ import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { RpcClient, type RpcExtensionUIResponse } from "@earendil-works/pi-coding-agent";
-import { PROTOCOL_VERSION, type ClientCommand, type ExtensionUiRequest, type ServerMessage, type Snapshot } from "@pi-remote/protocol";
-import { createTokenStore } from "../../pi-remote/token-store.ts";
+import { PROTOCOL_VERSION, type ClientCommand, type ExtensionUiRequest, type ServerMessage, type Snapshot } from "@pi-tin/protocol";
+import { createTokenStore } from "../../pi-tin/token-store.ts";
 import { ReviewTracker } from "./plannotator.ts";
 import type { HostBackend } from "./types.ts";
 
 const PLAN_TOOL = "plannotator_submit_plan";
 const agentDir = process.env.PI_CODING_AGENT_DIR || resolve(homedir(), ".pi", "agent");
-const statePath = resolve(agentDir, "pi-remote-host.json");
+const statePath = resolve(agentDir, "pi-tin-host.json");
+const legacyStatePath = resolve(agentDir, "pi-remote-host.json");
 
 type RpcStatus = "starting" | "ready" | "error" | "stopped";
 
@@ -18,7 +19,7 @@ export class HostController implements HostBackend {
   private rpc: RpcClient | null = null;
   private listeners = new Set<(message: ServerMessage) => void>();
   private activePath: string | null = null;
-  private cwd = process.env.PI_REMOTE_CWD || process.cwd();
+  private cwd = process.env.PI_TIN_CWD || process.env.PI_REMOTE_CWD || process.cwd();
   private running = false;
   private rpcStatus: RpcStatus = "stopped";
   private planPhase: Snapshot["planPhase"] = "idle";
@@ -282,5 +283,8 @@ export class HostController implements HostBackend {
 }
 
 function readHostState(): { cwd?: string; sessionPath?: string } {
-  try { return JSON.parse(readFileSync(statePath, "utf8")); } catch { return {}; }
+  for (const path of [statePath, legacyStatePath]) {
+    try { return JSON.parse(readFileSync(path, "utf8")); } catch {}
+  }
+  return {};
 }

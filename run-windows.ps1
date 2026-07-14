@@ -14,9 +14,9 @@ function Stop-ProcessTree {
 }
 
 function Stop-RunningDesktop {
-    Write-Host "Stopping any previous Pi Remote development app..." -ForegroundColor Cyan
+    Write-Host "Stopping any previous Pi Tin development app..." -ForegroundColor Cyan
 
-    $desktopProcesses = @(Get-Process -Name "Pi-Remote-portable", "pi-remote" -ErrorAction SilentlyContinue)
+    $desktopProcesses = @(Get-Process -Name "Pi-Tin-portable", "pi-tin", "Pi-Remote-portable" -ErrorAction SilentlyContinue)
     foreach ($desktopProcess in $desktopProcesses) {
         Stop-ProcessTree $desktopProcess.Id
     }
@@ -65,7 +65,7 @@ if ($LASTEXITCODE -ne 0) { throw "Could not install dependencies." }
 
 $env:VITE_BUILD_REVISION = (git rev-parse --short HEAD).Trim()
 if ($LASTEXITCODE -ne 0) { throw "Could not determine the current Git revision." }
-Write-Host "Starting Pi Remote from revision $env:VITE_BUILD_REVISION" -ForegroundColor Green
+Write-Host "Starting Pi Tin from revision $env:VITE_BUILD_REVISION" -ForegroundColor Green
 
-corepack pnpm --filter @pi-remote/desktop tauri dev
-if ($LASTEXITCODE -ne 0) { throw "Pi Remote development app exited with an error." }
+corepack pnpm --filter @pi-tin/desktop tauri dev
+if ($LASTEXITCODE -ne 0) { throw "Pi Tin development app exited with an error." }

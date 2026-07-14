@@ -32,7 +32,7 @@ importers:
       '@fontsource/jetbrains-mono':
         specifier: ^5.2.8
         version: 5.2.8
-      '@pi-remote/protocol':
+      '@pi-tin/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
       '@tauri-apps/api':
@@ -84,7 +84,7 @@ importers:
       '@earendil-works/pi-coding-agent':
         specifier: '>=0.80.0'
         version: 0.80.6(ws@8.21.0)(zod@4.4.3)
-      '@pi-remote/protocol':
+      '@pi-tin/protocol':
         specifier: workspace:*
         version: link:../protocol
       ws:
@@ -98,7 +98,7 @@ importers:
         specifier: ^8.18.1
         version: 8.18.1
 
-  packages/pi-remote:
+  packages/pi-tin:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: '>=0.74.0'

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { PROTOCOL_VERSION } from "@pi-remote/protocol";
+import { PROTOCOL_VERSION } from "@pi-tin/protocol";
 import { emptySession, reducePiEvent, replaceFromSnapshot } from "./reducer";
 
 const snapshot = (name: string, text: string) => ({

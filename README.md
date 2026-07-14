@@ -1,4 +1,4 @@
-# Pi Remote
+# Pi Tin
 
 A small Windows desktop client for controlling one persistent [Pi](https://github.com/earendil-works/pi) coding-agent session on a trusted local network. It mirrors live chat/tool activity and embeds [Plannotator](https://github.com/backnotprop/plannotator) reviews.
 
@@ -26,20 +26,22 @@ On Windows PowerShell, the same command is:
 node .\build-host.mjs
 ```
 
-The builder installs dependencies, runs focused validation, bundles the foreground host controller, installs the small `/pi-remote` settings extension, and installs/updates Plannotator.
+The builder installs dependencies, runs focused validation, bundles the foreground host controller, installs the small `/pi-tin` settings extension, and installs/updates Plannotator.
 
 Re-run it after `git pull`, then start remote control from the repository root:
 
 ```bash
-export PI_REMOTE_HOST=0.0.0.0
-export PI_REMOTE_PORT=31415
+export PI_TIN_HOST=0.0.0.0
+export PI_TIN_PORT=31415
 export PLANNOTATOR_PORT=19432
 node ./start-host.mjs
 ```
 
-The controller prints its cryptographically random token at startup and persists it in `~/.pi/agent/pi-remote.json`. It starts one Pi `--mode rpc` child and restores that session after restart. Run a separate normal TUI process only when local terminal use is wanted; it is independent of the controller.
+The controller prints its cryptographically random token at startup and persists it in `~/.pi/agent/pi-tin.json`. It starts one Pi `--mode rpc` child and restores that session after restart. Run a separate normal TUI process only when local terminal use is wanted; it is independent of the controller.
 
-Run `/pi-remote` in a normal Pi TUI to display or rotate the shared token. Rotation disconnects authenticated desktop clients. Use `--skip-tests` for a quick host rebuild or `--skip-plannotator` to leave Plannotator unchanged.
+Upgrading from Pi Remote automatically migrates the existing host token and session state. The `PI_REMOTE_HOST`, `PI_REMOTE_PORT`, and `PI_REMOTE_CWD` variables remain supported as fallbacks; prefer the new `PI_TIN_*` names.
+
+Run `/pi-tin` in a normal Pi TUI to display or rotate the shared token. Rotation disconnects authenticated desktop clients. Use `--skip-tests` for a quick host rebuild or `--skip-plannotator` to leave Plannotator unchanged.
 
 Allow only your local subnet through the firewall. Example with UFW:
 
@@ -51,8 +53,8 @@ sudo ufw allow from 192.168.1.0/24 to any port 19432 proto tcp
 Example for a Windows Pi host (run PowerShell as Administrator and adjust the subnet):
 
 ```powershell
-New-NetFirewallRule -DisplayName "Pi Remote control" -Direction Inbound -Action Allow -Protocol TCP -LocalPort 31415 -RemoteAddress 192.168.1.0/24
-New-NetFirewallRule -DisplayName "Pi Remote Plannotator" -Direction Inbound -Action Allow -Protocol TCP -LocalPort 19432 -RemoteAddress 192.168.1.0/24
+New-NetFirewallRule -DisplayName "Pi Tin control" -Direction Inbound -Action Allow -Protocol TCP -LocalPort 31415 -RemoteAddress 192.168.1.0/24
+New-NetFirewallRule -DisplayName "Pi Tin Plannotator" -Direction Inbound -Action Allow -Protocol TCP -LocalPort 19432 -RemoteAddress 192.168.1.0/24
 ```
 
 ## Add the host in the Windows app
@@ -88,7 +90,7 @@ Windows prerequisites for the native shell:
 - WebView2 Runtime (included on current Windows releases)
 
 ```powershell
-cd C:\git\pi-remote
+cd C:\git\pi-tin
 corepack enable
 pnpm install
 pnpm test
@@ -107,7 +109,7 @@ Update the repository and launch the current source directly in a native Tauri w
 powershell -ExecutionPolicy Bypass -File .\update-and-run-windows.ps1
 ```
 
-Use `run-windows.ps1` when the repository is already current. The updater fetches the tracked upstream branch, refuses local commits or tracked edits instead of overwriting them, stops an existing Pi Remote development app before changing files, and then launches the fetched revision. Both scripts skip tests, installers, and release packaging. Rust dependencies remain cached, Vite serves the current frontend directly, and the window reloads as UI files change. Stop it with `Ctrl+C`.
+Use `run-windows.ps1` when the repository is already current. The updater fetches the tracked upstream branch, refuses local commits or tracked edits instead of overwriting them, stops an existing Pi Tin development app before changing files, and then launches the fetched revision. Both scripts skip tests, installers, and release packaging. Rust dependencies remain cached, Vite serves the current frontend directly, and the window reloads as UI files change. Stop it with `Ctrl+C`.
 
 ## Build the Windows executable on another computer
 
@@ -117,7 +119,7 @@ Clone the repository, open PowerShell in its root, and run:
 powershell -ExecutionPolicy Bypass -File .\build-windows.ps1
 ```
 
-The script checks prerequisites, installs locked JavaScript dependencies, runs tests and type-checking, rebuilds the desktop package while preserving Rust dependency caches, then copies both the portable application and Tauri NSIS installer into `artifacts\`. The portable file is named `Pi-Remote-portable.exe` and can be run without installation.
+The script checks prerequisites, installs locked JavaScript dependencies, runs tests and type-checking, rebuilds the desktop package while preserving Rust dependency caches, then copies both the portable application and Tauri NSIS installer into `artifacts\`. The portable file is named `Pi-Tin-portable.exe` and can be run without installation.
 
 On a new Windows development machine, open PowerShell as Administrator and allow the script to install missing Node.js, Rust, and Visual C++ Build Tools through `winget`:
 
@@ -127,7 +129,7 @@ powershell -ExecutionPolicy Bypass -File .\build-windows.ps1 -InstallPrerequisit
 
 Optional flags:
 
-- `-PortableOnly` builds only `artifacts\Pi-Remote-portable.exe` and skips installer generation.
+- `-PortableOnly` builds only `artifacts\Pi-Tin-portable.exe` and skips installer generation.
 - `-Clean` removes previous frontend, Rust, and artifact output first.
 - `-SkipTests` skips tests and type-checking for a faster repeat build.
 
@@ -145,7 +147,7 @@ You can still invoke Tauri directly when both NSIS and MSI installers are wanted
 corepack pnpm install --frozen-lockfile
 corepack pnpm test
 corepack pnpm typecheck
-corepack pnpm --filter @pi-remote/desktop tauri build --bundles msi,nsis
+corepack pnpm --filter @pi-tin/desktop tauri build --bundles msi,nsis
 ```
 
 Native bundle output is written below `apps/desktop/src-tauri/target/release/bundle/`.
