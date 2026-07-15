@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createActivityViewModel, createTurnRenderModel, formatWorkedDuration } from "./turn-model";
+import { createActivityViewModel, createTurnRenderModel, formatWorkedDuration, formatWorkText } from "./turn-model";
 
 describe("createTurnRenderModel", () => {
   it("keeps direct answers out of a work disclosure", () => {
@@ -19,7 +19,7 @@ describe("createTurnRenderModel", () => {
     ], { messageStatus: { type: "complete" }, startedAtMs: 1_000, completedAtMs: 4_500 });
 
     expect(model.work?.status).toBe("complete");
-    expect(model.work?.items.map((item) => [item.kind, item.partIndex])).toEqual([
+    expect(model.work?.items.map((item) => [item.kind, "partIndex" in item ? item.partIndex : undefined])).toEqual([
       ["progress", 0], ["activity", 1], ["progress", 2], ["activity", 3],
     ]);
     expect(model.answerParts).toEqual([4]);
@@ -38,6 +38,22 @@ describe("createTurnRenderModel", () => {
     ], { messageStatus: { type: "complete" } });
     expect(model.work?.status).toBe("running");
     expect(model.answerParts).toEqual([]);
+  });
+
+  it("groups consecutive shell calls without losing their order", () => {
+    const model = createTurnRenderModel([
+      { type: "reasoning", text: "Checking" },
+      { type: "tool-call", toolCallId: "shell-1", toolName: "bash", args: { command: "pnpm test" }, result: "ok" },
+      { type: "tool-call", toolCallId: "shell-2", toolName: "bash", args: { command: "pnpm typecheck" }, result: "ok" },
+      { type: "text", text: "Done." },
+    ], { messageStatus: { type: "complete" } });
+
+    expect(model.work?.items).toHaveLength(2);
+    expect(model.work?.items[1]).toMatchObject({
+      kind: "activity-group",
+      activities: [{ id: "shell-1" }, { id: "shell-2" }],
+    });
+    expect(model.answerParts).toEqual([3]);
   });
 
   it("marks tool errors and cancellations without hiding a final answer", () => {
@@ -81,5 +97,11 @@ describe("formatWorkedDuration", () => {
     expect(formatWorkedDuration(40 * 60_000 + 42_000)).toBe("40m 42s");
     expect(formatWorkedDuration(3_200)).toBe("3s");
     expect(formatWorkedDuration(3_661_000)).toBe("1h 1m");
+  });
+});
+
+describe("formatWorkText", () => {
+  it("removes raw progress markdown and excess whitespace", () => {
+    expect(formatWorkText("  **Inspecting build output**\n\n\n## Next step  ")).toBe("Inspecting build output\n\nNext step");
   });
 });

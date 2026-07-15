@@ -223,10 +223,12 @@ main { min-width: 0; min-height: 0; height: 100%; display: flex; flex-direction:
 .work-disclosure-trigger svg.rotate { transform: rotate(180deg); }
 .turn-work.error .work-disclosure-trigger { color: color-mix(in srgb, var(--danger) 82%, var(--conversation-summary)); }
 .work-divider { width: 100%; margin: 5px 0 13px; border-top: .5px solid var(--border-default); }
-.work-transcript { margin: 0 0 18px; display: flex; flex-direction: column; gap: 16px; }
+.work-transcript { margin: 0 0 16px; display: flex; flex-direction: column; gap: 10px; }
 .work-item { min-width: 0; color: var(--text-primary); }
 .work-item.reasoning { color: var(--conversation-body); }
 .reasoning-text { margin: 0; white-space: pre-wrap; font-size: var(--chat-font-size); line-height: var(--chat-line-height); }
+.work-item.progress .markdown p:last-child { margin-bottom: 0; }
+.work-item.activity + .work-item.activity, .activity-item + .activity-item { margin-top: -5px; }
 .pending-work { min-height: 20px; color: var(--conversation-summary); }
 .cadenced-shimmer { color: var(--conversation-summary); background: linear-gradient(100deg, currentColor 0 38%, var(--text-primary) 48% 53%, currentColor 63% 100%); background-size: 260% 100%; background-clip: text; animation: cadenced-shimmer 2.6s steps(12, end) infinite; }
 
@@ -241,6 +243,9 @@ main { min-width: 0; min-height: 0; height: 100%; display: flex; flex-direction:
 .activity-trigger:hover .activity-chevron, .activity-trigger:focus-visible .activity-chevron, .activity-item.open .activity-chevron { opacity: .75; }
 .activity-item.open .activity-chevron { transform: rotate(90deg); }
 .activity-detail-wrap { min-width: 0; margin: 4px 0 0 20px; display: flex; flex-direction: column; gap: 4px; }
+.activity-group-items { min-width: 0; margin: 3px 0 2px 20px; display: flex; flex-direction: column; gap: 4px; }
+.activity-group-items .activity-trigger { font-size: 12px; }
+.activity-group-items .activity-trigger > svg:first-child { width: 12px; height: 12px; }
 .activity-detail-summary { overflow: hidden; color: var(--conversation-summary); text-overflow: ellipsis; white-space: nowrap; font: var(--code-font-size)/20px var(--font-mono); }
 .activity-detail { max-width: 100%; overflow: hidden; border-radius: 9px; background: var(--surface-code); box-shadow: inset 0 0 0 .5px var(--border-light); }
 .activity-detail header { min-height: 30px; padding: 0 8px 0 10px; display: flex; align-items: center; gap: 8px; border-bottom: .5px solid var(--border-default); color: var(--conversation-summary); font-size: 11px; }

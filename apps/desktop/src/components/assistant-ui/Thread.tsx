@@ -9,12 +9,12 @@ import {
   useAssistantState,
   type ImageMessagePartProps,
 } from "@assistant-ui/react";
-import { ArrowDown, ArrowUp, Brain, Check, ChevronDown, Copy, LoaderCircle, Paperclip, Sparkles, Square, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Brain, Check, ChevronDown, ChevronRight, Copy, LoaderCircle, Paperclip, Sparkles, Square, Terminal, X } from "lucide-react";
 import type { ImageInput, SlashCommand } from "@pi-tin/protocol";
 import { toast } from "sonner";
 import { MarkdownText } from "./MarkdownText";
 import { ToolCard } from "./ToolCard";
-import { createTurnRenderModel, formatWorkedDuration, type WorkItem, type WorkStatus } from "./turn-model";
+import { createTurnRenderModel, formatWorkedDuration, formatWorkText, type WorkItem, type WorkStatus } from "./turn-model";
 import { useAppStore } from "../../remote/store";
 import { clientSlashCommands, type ClientSlashCommand } from "../../runtime/client-slash-commands";
 
@@ -118,18 +118,42 @@ function GuidanceImages({ images, onRemove }: { images: PastedImage[]; onRemove:
 }
 
 function Reasoning({ text }: { text: string }) {
-  return text ? <div className="reasoning-text">{text}</div> : null;
+  const formatted = formatWorkText(text);
+  return formatted ? <div className="reasoning-text">{formatted}</div> : null;
 }
 
 const turnPartComponents = { Text: MarkdownText, Reasoning, Image: MessageImage, tools: { Fallback: ToolCard } };
 
 function WorkItemView({ item }: { item: WorkItem }) {
+  if (item.kind === "activity-group") return <ActivityGroupView item={item} />;
   if (item.kind === "activity") {
     return <MessagePrimitive.PartByIndex index={item.partIndex} components={turnPartComponents} />;
   }
   return <div className={`work-item ${item.kind}`}>
     <MessagePrimitive.PartByIndex index={item.partIndex} components={turnPartComponents} />
     {item.pending && <div className="pending-work"><span className="cadenced-shimmer">Thinking</span></div>}
+  </div>;
+}
+
+function ActivityGroupView({ item }: { item: Extract<WorkItem, { kind: "activity-group" }> }) {
+  const status = item.activities.some((activity) => activity.status === "running")
+    ? "running"
+    : item.activities.some((activity) => activity.status === "error") ? "error" : "complete";
+  const [open, setOpen] = useState(status === "running" || status === "error");
+  const previousStatus = useRef(status);
+  useEffect(() => {
+    if (status === "running") setOpen(true);
+    else if (previousStatus.current === "running") setOpen(false);
+    previousStatus.current = status;
+  }, [status]);
+  const label = status === "running" ? "Running commands" : status === "error" ? "Some commands failed" : "Ran commands";
+  return <div className={`activity-item activity-group ${status} ${open ? "open" : ""}`}>
+    <button type="button" className="activity-trigger" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
+      <Terminal /><span className={status === "running" ? "cadenced-shimmer" : undefined}>{label}</span><ChevronRight className="activity-chevron" />
+    </button>
+    {open && <div className="activity-group-items">
+      {item.activities.map((activity) => <MessagePrimitive.PartByIndex key={activity.id} index={activity.partIndex} components={turnPartComponents} />)}
+    </div>}
   </div>;
 }
 

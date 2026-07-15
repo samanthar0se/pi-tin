@@ -29,7 +29,8 @@ export type ActivityViewModel = {
 
 export type WorkItem =
   | { id: string; kind: "progress" | "reasoning"; partIndex: number; pending: boolean }
-  | { id: string; kind: "activity"; partIndex: number; activity: ActivityViewModel }; 
+  | { id: string; kind: "activity"; partIndex: number; activity: ActivityViewModel }
+  | { id: string; kind: "activity-group"; activities: ActivityViewModel[] };
 
 export type WorkStatus = "running" | "complete" | "error" | "cancelled";
 
@@ -156,6 +157,37 @@ function meaningfulPart(part: TurnPart): boolean {
   return part.type !== "text" || Boolean(part.text?.trim());
 }
 
+export function formatWorkText(value: string): string {
+  return value
+    .trim()
+    .replace(/\*\*([^*\n]+)\*\*/g, "$1")
+    .replace(/^[ \t]*#{1,6}[ \t]+/gm, "")
+    .replace(/\n{3,}/g, "\n\n");
+}
+
+function groupConsecutiveShellActivities(items: WorkItem[]): WorkItem[] {
+  const grouped: WorkItem[] = [];
+  for (let index = 0; index < items.length;) {
+    const item = items[index]!;
+    if (item.kind !== "activity" || item.activity.kind !== "shell") {
+      grouped.push(item);
+      index += 1;
+      continue;
+    }
+    const activities: ActivityViewModel[] = [];
+    while (index < items.length) {
+      const candidate = items[index]!;
+      if (candidate.kind !== "activity" || candidate.activity.kind !== "shell") break;
+      activities.push(candidate.activity);
+      index += 1;
+    }
+    grouped.push(activities.length === 1
+      ? item
+      : { id: `activity-group-${activities[0]!.id}`, kind: "activity-group", activities });
+  }
+  return grouped;
+}
+
 function workStatus(parts: readonly TurnPart[], options: TurnModelOptions, finalAnswerStarted: boolean): WorkStatus {
   const unfinishedTool = parts.some((part) => part.type === "tool-call" && (part.isRunning === true || part.result === undefined) && !part.isError);
   if (unfinishedTool || (options.messageStatus?.type === "running" && !finalAnswerStarted)) return "running";
@@ -213,7 +245,7 @@ export function createTurnRenderModel(parts: readonly TurnPart[], options: TurnM
       startedAtMs: options.startedAtMs,
       completedAtMs: options.completedAtMs,
       status,
-      items,
+      items: groupConsecutiveShellActivities(items),
     },
     answerParts,
   };
