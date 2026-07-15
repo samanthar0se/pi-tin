@@ -6,3 +6,6 @@
 - Restart Pi or use `/reload` after extension changes.
 - Build Windows artifacts with `build-windows.ps1`; add `-PortableOnly` when no installer is needed.
 - Do not add services, cloud infrastructure, multi-process orchestration, or broad test suites for this personal LAN MVP.
+- When running Windows commands through bash, redirect to `/dev/null`, never `NUL`; MSYS-style shells can create an actual `NUL` file in the repository.
+- For nontrivial PowerShell containing `$` variables or process management, write a temporary `.ps1` and invoke it with `powershell -File` instead of nesting it inside `bash` with `-Command`. Capture launched PIDs directly; do not stop processes with a command-line filter that can match the cleanup command itself.
+- Confirm inferred dependency and generated-file paths with `rg --files` before calling `read`; package sources may use extensions such as `.tsx` rather than `.ts`.
