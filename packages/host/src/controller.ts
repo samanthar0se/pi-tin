@@ -91,17 +91,14 @@ export class HostController implements HostBackend {
     this.sessions.set(record.id, session);
     this.persist();
     this.emitSessionList();
-    try {
-      await session.start();
-      this.emitSessionList();
-      return { sessionId: record.id };
-    } catch (error) {
-      await session.stop();
-      this.sessions.delete(record.id);
-      this.persist();
-      this.emitSessionList();
-      throw error;
-    }
+    void session.start().then(
+      () => this.emitSessionList(),
+      () => {
+        this.persist();
+        this.emitSessionList();
+      },
+    );
+    return { sessionId: record.id };
   }
 
   private async closeSession(sessionId: string): Promise<{ sessionId: string }> {
@@ -288,6 +285,9 @@ class PiSessionRuntime {
       this.persistAll();
       this.emitHostState();
     } catch (error) {
+      try { await rpc.stop(); } catch {}
+      this.rpc = null;
+      this.running = false;
       this.rpcStatus = "error";
       this.emit({
         type: "host_state",

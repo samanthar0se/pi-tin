@@ -21,7 +21,7 @@ export function HostSettingsDialog({ onClose }: { onClose: () => void }) {
     if (!window.confirm("Restart the selected Pi runtime? Its active response will stop, and its current session will be restored.")) return;
     setRestarting(true);
     try {
-      await command({ type: "restart_pi" }, 30_000);
+      await command({ type: "restart_pi" }, 120_000);
       toast.success("Pi restarted on the host");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not restart Pi");
@@ -39,7 +39,7 @@ export function HostSettingsDialog({ onClose }: { onClose: () => void }) {
     <div className="field-row"><label>Control port<input required type="number" value={editing.controlPort} onChange={(event) => setEditing({ ...editing, controlPort: Number(event.target.value) })} /></label><label>Review port<input required type="number" value={editing.plannotatorPort} onChange={(event) => setEditing({ ...editing, plannotatorPort: Number(event.target.value) })} /></label></div>
     <label>Generated token<input required type="password" value={editing.token} onChange={(event) => setEditing({ ...editing, token: event.target.value })} /></label>
     <p>Copy the token printed by `start-host.mjs`. Saving replaces the single configured connection.</p>
-    {profile && <div className="host-control"><div><strong>Selected Pi runtime</strong><span>Restart the selected Pi process and restore its current session.</span></div><button type="button" disabled={!connected || rpcStatus !== "ready" || restarting} onClick={() => void restartPi()}><RotateCcw className={restarting ? "spin" : undefined} size={15} />{restarting ? "Restarting…" : "Restart Pi"}</button></div>}
+    {profile && <div className="host-control"><div><strong>Selected Pi runtime</strong><span>Restart the selected Pi process and restore its current session.</span></div><button type="button" disabled={!connected || rpcStatus === "starting" || restarting} onClick={() => void restartPi()}><RotateCcw className={restarting ? "spin" : undefined} size={15} />{restarting ? "Restarting…" : rpcStatus === "error" ? "Retry Pi" : "Restart Pi"}</button></div>}
     <p className="build-revision">Desktop build {buildRevision}</p>
     <footer>{profile && <button className="danger" type="button" onClick={() => void clear().then(onClose)}><Trash2 size={15} /> Remove connection</button>}<span /><button type="button" onClick={onClose}>Cancel</button><button className="primary" type="submit">Save & connect</button></footer>
   </form></div>;

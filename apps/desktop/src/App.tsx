@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Archive, Code2, FilePlus2, Moon, Settings, Sun, Unplug, X, Zap } from "lucide-react";
+import { Archive, Code2, FilePlus2, Moon, RotateCcw, Settings, Sun, Unplug, X, Zap } from "lucide-react";
 import { Toaster, toast } from "sonner";
 import { ExtensionUiDialog } from "./components/ExtensionUiDialog";
 import { HostSettingsDialog } from "./components/HostSettingsDialog";
@@ -47,6 +47,7 @@ export default function App() {
   const connected = state === "connected";
   const hasActiveSession = Boolean(activeSessionId);
   const sessionReady = connected && hasActiveSession && rpcStatus === "ready";
+  const sessionFailed = connected && hasActiveSession && rpcStatus === "error";
   const hasGlobalReview = sessions.some((item) => Boolean(item.activeReviewId));
   const close = async (sessionId: string, label: string) => {
     if (!window.confirm(`Close ${label}? Its saved Pi transcript will remain on the host.`)) return;
@@ -61,9 +62,10 @@ export default function App() {
         <div className="session-heading"><strong>{session.sessionName || (hasActiveSession ? "Remote Pi session" : "No open session")}</strong><span title={session.cwd || undefined}>{session.cwd || (profile ? "Open a Pi session to begin" : "Configure the connection in Settings")}</span></div>
         <div className="top-actions">
           <div className={`connection-pill ${state}`} title={detail}><i />{state}</div>
-          <button className="new-action" disabled={!connected || sessions.length >= maxSessions} onClick={() => setNewSessionOpen(true)}><FilePlus2 size={15} /> New</button>
-          <button disabled={!sessionReady || hasGlobalReview} className={`plan-action ${session.planPhase !== "idle" ? "active-control" : ""}`} onClick={() => run("Plan mode", command({ type: "set_plan_mode", mode: session.planPhase === "idle" ? "enter" : "exit" }))}><Zap size={15} /> Plan</button>
-          <button className="review-action" disabled={!sessionReady || hasGlobalReview} onClick={() => run("Code review", command({ type: "start_code_review" }))}><Code2 size={15} /> Review</button>
+          <button className="new-action" title="New Pi session" disabled={!connected || sessions.length >= maxSessions} onClick={() => setNewSessionOpen(true)}><FilePlus2 size={15} /><span>New</span></button>
+          {sessionFailed && <button className="restart-action" title="Retry the selected Pi runtime" onClick={() => run("Restart Pi", command({ type: "restart_pi" }, 120_000))}><RotateCcw size={15} /><span>Retry Pi</span></button>}
+          <button disabled={!sessionReady || hasGlobalReview} title="Toggle plan mode" className={`plan-action ${session.planPhase !== "idle" ? "active-control" : ""}`} onClick={() => run("Plan mode", command({ type: "set_plan_mode", mode: session.planPhase === "idle" ? "enter" : "exit" }))}><Zap size={15} /><span>Plan</span></button>
+          <button className="review-action" title="Review changes" disabled={!sessionReady || hasGlobalReview} onClick={() => run("Code review", command({ type: "start_code_review" }))}><Code2 size={15} /><span>Review</span></button>
           <button className="icon-button" disabled={!sessionReady || session.isRunning} onClick={() => run("Compact", command({ type: "compact" }))} title="Compact context"><Archive size={16} /></button>
           <button className="icon-button" onClick={() => setSettingsOpen(true)} title="Connection settings"><Settings size={16} /></button>
           <button className="icon-button" onClick={() => setDark((value) => !value)} title="Toggle theme">{dark ? <Sun size={16} /> : <Moon size={16} />}</button>
