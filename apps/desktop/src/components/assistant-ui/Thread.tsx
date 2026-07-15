@@ -16,6 +16,7 @@ import { MarkdownText } from "./MarkdownText";
 import { ToolCard } from "./ToolCard";
 import { createTurnRenderModel, formatWorkedDuration, type WorkItem, type WorkStatus } from "./turn-model";
 import { useAppStore } from "../../remote/store";
+import { clientSlashCommands, type ClientSlashCommand } from "../../runtime/client-slash-commands";
 
 export function Thread({ fixtureConnected = false }: { fixtureConnected?: boolean }) {
   return <ThreadPrimitive.Root className="thread-root">
@@ -197,23 +198,22 @@ function CopyIcon() {
   return copied ? <Check size={15} /> : <Copy size={15} />;
 }
 
-type DisplayCommand = SlashCommand | { name: "new"; description: string; source: "client"; scope: "temporary" };
+type DisplayCommand = SlashCommand | ClientSlashCommand;
 
-function CommandCompletion({ text, connected, allowNew, onComplete }: { text: string; connected: boolean; allowNew: boolean; onComplete: (value: string) => void }) {
+function CommandCompletion({ text, connected, allowSessionCommands, onComplete }: { text: string; connected: boolean; allowSessionCommands: boolean; onComplete: (value: string) => void }) {
   const remoteCommands = useAppStore((state) => state.session.commands);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const listRef = useRef<HTMLDivElement>(null);
   const trimmed = text.trimStart();
   const query = trimmed.slice(1).toLowerCase();
-  const localCommands: DisplayCommand[] = allowNew
-    ? [{ name: "new", description: "Start a fresh persistent session", source: "client", scope: "temporary" }]
-    : [];
-  const commands: DisplayCommand[] = [...localCommands, ...remoteCommands.filter((command) => command.name !== "new")];
+  const localCommands: DisplayCommand[] = allowSessionCommands ? clientSlashCommands : [];
+  const localNames = new Set<string>(localCommands.map((command) => command.name));
+  const commands: DisplayCommand[] = [...localCommands, ...remoteCommands.filter((command) => !localNames.has(command.name))];
   const matches = connected && trimmed.startsWith("/") && !trimmed.slice(1).includes(" ")
     ? commands.filter((command) => command.name.toLowerCase().includes(query) || command.description?.toLowerCase().includes(query))
     : [];
 
-  useEffect(() => { setSelectedIndex(0); }, [query, allowNew]);
+  useEffect(() => { setSelectedIndex(0); }, [query, allowSessionCommands]);
   useEffect(() => { listRef.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: "nearest" }); }, [selectedIndex]);
   useEffect(() => {
     if (matches.length === 0) return;
@@ -250,7 +250,7 @@ function CommandCompletion({ text, connected, allowNew, onComplete }: { text: st
 function IdleCommandCompletion({ connected }: { connected: boolean }) {
   const text = useAssistantState((state) => state.composer.text);
   const api = useAssistantApi();
-  return <CommandCompletion text={text} connected={connected} allowNew onComplete={(value) => api.composer().setText(value)} />;
+  return <CommandCompletion text={text} connected={connected} allowSessionCommands onComplete={(value) => api.composer().setText(value)} />;
 }
 
 function ComposerControls({ connected }: { connected: boolean }) {
@@ -334,7 +334,7 @@ function Composer({ fixtureConnected }: { fixtureConnected: boolean }) {
     };
     const hasGuidance = Boolean(guidance.trim() || guidanceImages.length > 0);
     return <div className="composer active-composer">
-      <CommandCompletion text={guidance} connected={connected} allowNew={false} onComplete={setGuidance} />
+      <CommandCompletion text={guidance} connected={connected} allowSessionCommands={false} onComplete={setGuidance} />
       <GuidanceImages images={guidanceImages} onRemove={(id) => setGuidanceImages((images) => images.filter((image) => image.id !== id))} />
       <textarea value={guidance} onChange={(e) => setGuidance(e.target.value)} onPaste={pasteImages} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); sendGuidance(); } }} rows={1} placeholder={delivery === "steer" ? "Send guidance or paste an image…" : "Queue a follow-up or paste an image…"} />
       <input ref={guidanceFileInput} className="visually-hidden" type="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple onChange={(event) => { addImages(Array.from(event.target.files ?? [])); event.target.value = ""; }} />

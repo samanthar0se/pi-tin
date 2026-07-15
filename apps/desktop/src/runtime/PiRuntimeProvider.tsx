@@ -9,6 +9,7 @@ import {
 } from "@assistant-ui/react";
 import type { ImageInput } from "@pi-tin/protocol";
 import { useAppStore } from "../remote/store";
+import { parseClientSlashCommand } from "./client-slash-commands";
 
 const simpleImageAdapter = new SimpleImageAttachmentAdapter();
 const imageAttachmentAdapter: AttachmentAdapter = {
@@ -50,8 +51,9 @@ export function PiRuntimeProvider({ children }: { children: ReactNode }) {
       const text = message.content.filter((part) => part.type === "text").map((part) => part.text).join("\n").trim();
       const images = messageImages(message);
       if (!text && images.length === 0) return;
-      if (text === "/new" && images.length === 0) {
-        await command({ type: "new_session" }, 30_000);
+      const clientCommand = parseClientSlashCommand(text, images.length > 0);
+      if (clientCommand) {
+        await command(clientCommand, clientCommand.type === "compact" ? 120_000 : 30_000);
         return;
       }
       await command({ type: isRunning ? "steer" : "prompt", message: text, images: images.length ? images : undefined });

@@ -29,6 +29,7 @@ Codex completed in `1m 52s`. Pi completed in `1m 42s`. Neither modified reposito
 | New task/session | New task appears immediately | Desktop waits for full RPC startup and can show `create_session timed out` after 30 seconds | Return the session ID immediately and show the tab in `starting` state. |
 | Startup failure | Task remains visible and recoverable | Failed Pi runtime could disappear; retry was hidden in Settings and disabled in error state | Retain the errored session and expose `Retry Pi`. |
 | Compact header | Actions become clean icon buttons | Text labels clip beside icons around the benchmark width | Hide wrapped labels at compact widths while preserving titles. |
+| Built-in slash commands | Task controls remain discoverable in the composer | RPC discovery omits Pi built-ins, so `/compact` was absent even though the header action existed | Register local `/new` and `/compact` entries and route them to real host commands. |
 | Batched tools | Consecutive shell work may appear as `Ran commands` | Each Pi tool call remains an ordered semantic row | Accept for now; preserving exact Pi tool order is more useful than cosmetic grouping. |
 
 ## Changes From This Comparison
@@ -38,6 +39,7 @@ Codex completed in `1m 52s`. Pi completed in `1m 42s`. Neither modified reposito
 - Pi Tin exposes `Retry Pi` in the main header for an errored selected runtime and enables retry from Connection Settings.
 - Restart requests use a two-minute desktop deadline to accommodate slow Windows process startup.
 - Compact topbar actions use explicit label spans, producing clean icon-only controls instead of clipped text.
+- The composer now discovers and executes `/compact`, including optional custom compaction instructions, instead of depending on RPC command discovery for Pi built-ins.
 
 ## Remaining Reliability Findings
 
