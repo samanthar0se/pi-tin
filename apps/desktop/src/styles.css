@@ -70,15 +70,15 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .app-shell { height: 100%; }
 main { min-width: 0; min-height: 0; height: 100%; display: flex; flex-direction: column; background: var(--bg); }
 
-.topbar { min-height: 50px; padding: 7px 18px; display: grid; grid-template-columns: 170px minmax(120px, 1fr) auto; align-items: center; gap: 16px; border-bottom: 1px solid color-mix(in srgb, var(--line) 75%, transparent); }
-.product-mark { display: flex; align-items: center; gap: 9px; white-space: nowrap; }
+.topbar { min-height: 50px; padding: 7px 18px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(120px, 340px) minmax(0, 1fr); align-items: center; gap: 16px; border-bottom: 1px solid color-mix(in srgb, var(--line) 75%, transparent); }
+.product-mark { justify-self: start; display: flex; align-items: center; gap: 9px; white-space: nowrap; }
 .product-mark > span { width: 29px; height: 29px; display: grid; place-items: center; border-radius: 9px; background: var(--accent); color: var(--accent-text); font: 20px Georgia, serif; }
 .product-mark strong { font-size: 16px; font-weight: 600; letter-spacing: -.02em; }
 .product-mark em { color: var(--work); font-style: normal; }
 .session-heading { min-width: 0; display: flex; flex-direction: column; align-items: center; overflow: hidden; }
 .session-heading strong { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 600; }
 .session-heading span { max-width: 340px; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 10px; }
-.top-actions { display: flex; align-items: center; justify-content: flex-end; gap: 3px; }
+.top-actions { justify-self: end; display: flex; align-items: center; justify-content: flex-end; gap: 3px; }
 .top-actions > button { height: 34px; padding: 0 10px; display: flex; align-items: center; gap: 6px; border: 0; border-radius: 9px; background: transparent; font-size: 12px; cursor: pointer; white-space: nowrap; }
 .top-actions > button:hover:not(:disabled), .icon-button:hover, .message-actions button:hover { background: var(--panel); }
 .top-actions button:disabled { opacity: .38; cursor: not-allowed; }
@@ -385,14 +385,17 @@ main { min-width: 0; min-height: 0; height: 100%; display: flex; flex-direction:
 @media (prefers-reduced-motion: reduce) {
   .cadenced-shimmer { color: var(--conversation-summary); background: none; animation: none; }
 }
-@media (max-width: 900px) {
-  .topbar { grid-template-columns: auto minmax(90px, 1fr) auto; padding-inline: 12px; }
+@media (max-width: 1200px) {
+  .topbar { padding-inline: 12px; }
   .product-mark strong { display: none; }
   .product-mark { width: 30px; }
   .connection-pill { display: none; }
-  .session-heading span { display: none; }
   .top-actions > button:not(.icon-button) { width: 34px; padding: 0; justify-content: center; overflow: hidden; }
   .top-actions > button:not(.icon-button) svg { flex: none; }
+}
+@media (max-width: 900px) {
+  .topbar { grid-template-columns: minmax(0, 1fr) minmax(90px, 260px) minmax(0, 1fr); }
+  .session-heading span { display: none; }
 }
 @media (max-width: 620px) {
   .top-actions > .plan-action, .top-actions > .review-action { display: none !important; }
