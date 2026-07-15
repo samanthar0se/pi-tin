@@ -215,7 +215,7 @@ export function reducePiEvent(state: SessionState, rawEvent: unknown): SessionSt
         const parts = [...message.content as any[]];
         const index = parts.findIndex((part) => part.type === "tool-call" && part.toolCallId === event.toolCallId);
         const toolPart = {
-          type: "tool-call", toolCallId: String(event.toolCallId), toolName: String(event.toolName), args: asObject(event.args), argsText: JSON.stringify(event.args ?? {}, null, 2),
+          type: "tool-call", toolCallId: String(event.toolCallId), toolName: String(event.toolName), args: asObject(event.args), argsText: JSON.stringify(event.args ?? {}, null, 2), isRunning: true,
         };
         if (index < 0) parts.push(toolPart);
         else parts[index] = { ...parts[index], ...toolPart };
@@ -225,7 +225,7 @@ export function reducePiEvent(state: SessionState, rawEvent: unknown): SessionSt
     case "tool_execution_end":
       return { ...state, messages: updateLastAssistant(state.messages, (message) => ({ ...message, content: (message.content as any[]).map((part) =>
         part.type === "tool-call" && part.toolCallId === event.toolCallId
-          ? { ...part, result: toolResultText(event.type === "tool_execution_end" ? event.result : event.partialResult), ...(event.type === "tool_execution_end" ? { isError: Boolean(event.isError) } : {}) }
+          ? { ...part, result: toolResultText(event.type === "tool_execution_end" ? event.result : event.partialResult), isRunning: event.type === "tool_execution_update", ...(event.type === "tool_execution_end" ? { isError: Boolean(event.isError) } : {}) }
           : part) } as UiMessage)) };
     case "model_select": return { ...state, model: event.model ?? state.model };
     case "thinking_level_select": return { ...state, thinkingLevel: String(event.level ?? state.thinkingLevel) };

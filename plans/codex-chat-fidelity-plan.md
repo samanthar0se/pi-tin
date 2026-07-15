@@ -379,80 +379,80 @@ No protocol or host change is expected for the initial fidelity pass.
 
 - [ ] Record reference screenshots at one fixed Windows size for empty, one-line user prompt, multiline prompt, running/thinking, completed tool, expanded work, expanded command, error, code block, image attachment, disconnected, and narrow composer states.
 - [ ] Record matching Pi Tin screenshots before changes.
-- [ ] Add a development-only deterministic chat fixture or story route that renders normalized local messages without a live host; keep it out of production navigation and avoid a new testing framework.
-- [ ] Define the initial light/dark tokens and measurement constants in one CSS section.
+- [x] Add a development-only deterministic chat fixture or story route that renders normalized local messages without a live host; keep it out of production navigation and avoid a new testing framework.
+- [x] Define the initial light/dark tokens and measurement constants in one CSS section.
 
 Exit criteria: every later visual change can be compared against the same state matrix without invoking a remote agent.
 
 ### Phase 1 — Turn Model and Work Disclosure
 
-- [ ] Add `turn-model.ts` and move work/answer boundary logic out of React components.
-- [ ] Cover direct answers, progress + tool + answer, repeated progress/tool cycles, running tools, tool errors, cancellation, and transcript restoration.
-- [ ] Replace `Unstable_PartsGrouped` usage with `AssistantTurn` rendering from the model.
-- [ ] Implement one `Working for …` / `Worked for …` disclosure and divider per turn.
-- [ ] Tick running duration once per second and preserve completed transcript duration.
-- [ ] Keep the final answer mounted when work is collapsed.
+- [x] Add `turn-model.ts` and move work/answer boundary logic out of React components.
+- [x] Cover direct answers, progress + tool + answer, repeated progress/tool cycles, running tools, tool errors, cancellation, and transcript restoration.
+- [x] Replace `Unstable_PartsGrouped` usage with `AssistantTurn` rendering from the model.
+- [x] Implement one `Working for …` / `Worked for …` disclosure and divider per turn.
+- [x] Tick running duration once per second and preserve completed transcript duration.
+- [x] Keep the final answer mounted when work is collapsed.
 
 Exit criteria: the DOM hierarchy and collapse behavior match Codex even before final styling.
 
 ### Phase 2 — Activity Rows and Tool Detail
 
-- [ ] Replace aggregate tool counts with ordered semantic activity rows.
-- [ ] Derive concise labels from tool names and args.
-- [ ] Add hover/focus chevrons and restrained error states.
-- [ ] Implement shell detail with command summary, terminal panel, copy, and bounded scrolling.
-- [ ] Implement read/edit/search/web/generic detail variants.
-- [ ] Remove default wrench/check/status card chrome.
-- [ ] Ensure long commands and paths truncate without widening the thread.
+- [x] Replace aggregate tool counts with ordered semantic activity rows.
+- [x] Derive concise labels from tool names and args.
+- [x] Add hover/focus chevrons and restrained error states.
+- [x] Implement shell detail with command summary, terminal panel, copy, and bounded scrolling.
+- [x] Implement read/edit/search/web/generic detail variants.
+- [x] Remove default wrench/check/status card chrome.
+- [x] Ensure long commands and paths truncate without widening the thread.
 
 Exit criteria: closed work reads like Codex’s activity log; raw payloads remain available through nested disclosure.
 
 ### Phase 3 — Typography, Markdown, and Theme
 
-- [ ] Switch chat to 13px/20px and code to 12px tokens.
-- [ ] Darken the app canvas and reduce panel/border contrast.
-- [ ] Tighten paragraphs, lists, headings, and message-region gaps.
-- [ ] Add inline code chips and code-block header/copy treatment.
-- [ ] Align action rows and timestamps.
-- [ ] Implement cadenced pending-text shimmer and remove bold continuous shimmer.
+- [x] Switch chat to 13px/20px and code to 12px tokens.
+- [x] Darken the app canvas and reduce panel/border contrast.
+- [x] Tighten paragraphs, lists, headings, and message-region gaps.
+- [x] Add inline code chips and code-block header/copy treatment.
+- [x] Align action rows and timestamps.
+- [x] Implement cadenced pending-text shimmer and remove bold continuous shimmer.
 
 Exit criteria: text density, contrast, and markdown surfaces match the reference at normal zoom in both themes.
 
 ### Phase 4 — Composer Fidelity
 
-- [ ] Separate text-column and composer maximum widths.
-- [ ] Rebuild composer surface/ring/radius/underlay.
-- [ ] Add attachment button using the current adapter.
-- [ ] Restyle model/thinking as a compact compound control.
-- [ ] Restyle steer/follow-up as a quiet mode trigger.
-- [ ] Replace the red stop pill with round send/stop behavior.
-- [ ] Reposition context usage and preserve its tooltip.
-- [ ] Match menu and image-preview surfaces.
-- [ ] Add composer container queries and accessible icon-only fallbacks.
+- [x] Separate text-column and composer maximum widths.
+- [x] Rebuild composer surface/ring/radius/underlay.
+- [x] Add attachment button using the current adapter.
+- [x] Restyle model/thinking as a compact compound control.
+- [x] Restyle steer/follow-up as a quiet mode trigger.
+- [x] Replace the red stop pill with round send/stop behavior.
+- [x] Reposition context usage and preserve its tooltip.
+- [x] Match menu and image-preview surfaces.
+- [x] Add composer container queries and accessible icon-only fallbacks.
 
 Exit criteria: idle, multiline, attachment, slash menu, active-empty, active-guidance, disconnected, and narrow composer states remain functional and visually coherent.
 
 ### Phase 5 — Shell, Empty State, and Scroll Polish
 
-- [ ] Reduce topbar and session-tab height while preserving five-session usability.
-- [ ] Simplify the welcome state and align it with the composer.
-- [ ] Tune sticky underlay and jump-to-bottom placement.
-- [ ] Verify expansion and streaming do not jump the viewport.
-- [ ] Remove smooth scrolling from passive stream updates if necessary.
-- [ ] Replace nth-child responsive rules with semantic classes/container queries.
+- [x] Reduce topbar and session-tab height while preserving five-session usability.
+- [x] Simplify the welcome state and align it with the composer.
+- [x] Tune sticky underlay and jump-to-bottom placement.
+- [x] Verify expansion and streaming do not jump the viewport.
+- [x] Remove smooth scrolling from passive stream updates if necessary.
+- [x] Replace nth-child responsive rules with semantic classes/container queries.
 
 Exit criteria: the chat window shows comparable content density to Codex and remains stable across session switching and reconnects.
 
 ### Phase 6 — Validation and Cleanup
 
-- [ ] Run focused turn-model, thread, and reducer tests.
-- [ ] Run the canonical `node ./build-host.mjs` build/install command.
+- [x] Run focused turn-model, thread, and reducer tests.
+- [x] Run the canonical `node ./build-host.mjs` build/install command.
 - [ ] Compare every fixture state side by side in light and dark themes.
 - [ ] Test at 100%, 125%, and 150% Windows scaling.
 - [ ] Test keyboard focus, screen-reader names, reduced motion, and high-contrast fallback.
 - [ ] Test long paths, long commands, large tool output, code overflow, ten images, and unavailable context usage.
 - [ ] Test reconnect during a running turn and transcript restoration after restart.
-- [ ] Remove obsolete grouping and card CSS after parity is confirmed.
+- [x] Remove obsolete grouping and card CSS after parity is confirmed.
 
 ## Visual Acceptance Matrix
 

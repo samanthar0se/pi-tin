@@ -16,10 +16,13 @@ describe("Pi state reduction", () => {
     state = reducePiEvent(state, { type: "message_update", assistantMessageEvent: { type: "thinking_delta", delta: "checking" } });
     state = reducePiEvent(state, { type: "message_update", assistantMessageEvent: { type: "text_delta", delta: "done" } });
     state = reducePiEvent(state, { type: "tool_execution_start", toolCallId: "t1", toolName: "read", args: { path: "a.ts" } });
+    expect((state.messages[0]!.content as any[])[2]).toMatchObject({ isRunning: true });
+    state = reducePiEvent(state, { type: "tool_execution_update", toolCallId: "t1", partialResult: { content: [{ type: "text", text: "partial" }] } });
+    expect((state.messages[0]!.content as any[])[2]).toMatchObject({ result: "partial", isRunning: true });
     state = reducePiEvent(state, { type: "tool_execution_end", toolCallId: "t1", result: { content: [{ type: "text", text: "file" }] }, isError: false });
     const parts = state.messages[0]!.content as any[];
     expect(parts.map((part) => part.type)).toEqual(["reasoning", "text", "tool-call"]);
-    expect(parts[2].result).toBe("file");
+    expect(parts[2]).toMatchObject({ result: "file", isRunning: false });
     expect(state.isRunning).toBe(true);
   });
 

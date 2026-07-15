@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ClipboardEvent as ReactClipboardEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ClipboardEvent as ReactClipboardEvent } from "react";
 import {
   ActionBarPrimitive,
   AttachmentPrimitive,
@@ -9,33 +9,36 @@ import {
   useAssistantState,
   type ImageMessagePartProps,
 } from "@assistant-ui/react";
-import { ArrowDown, ArrowUp, Brain, Check, ChevronDown, Copy, FileSearch, Globe2, LoaderCircle, PencilLine, Sparkles, Square, Terminal, Wrench, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Brain, Check, ChevronDown, Copy, Paperclip, Sparkles, Square, X } from "lucide-react";
 import type { ImageInput, SlashCommand } from "@pi-tin/protocol";
 import { toast } from "sonner";
 import { MarkdownText } from "./MarkdownText";
 import { ToolCard } from "./ToolCard";
+import { createTurnRenderModel, formatWorkedDuration, type WorkItem, type WorkStatus } from "./turn-model";
 import { useAppStore } from "../../remote/store";
 
-export function Thread() {
+export function Thread({ fixtureConnected = false }: { fixtureConnected?: boolean }) {
   return <ThreadPrimitive.Root className="thread-root">
     <ThreadPrimitive.Viewport className="thread-viewport">
-      <div className="thread-column">
-        <ThreadPrimitive.Empty><Welcome /></ThreadPrimitive.Empty>
+      <div className="thread-content">
+        <ThreadPrimitive.Empty><Welcome fixtureConnected={fixtureConnected} /></ThreadPrimitive.Empty>
         <ThreadPrimitive.Messages components={{ Message: ThreadMessage }} />
-        <ThreadPrimitive.ViewportFooter className="composer-footer">
+      </div>
+      <ThreadPrimitive.ViewportFooter className="composer-footer">
+        <div className="composer-column">
           <ThreadPrimitive.ScrollToBottom asChild>
             <button className="scroll-bottom" title="Scroll to bottom"><ArrowDown size={16} /></button>
           </ThreadPrimitive.ScrollToBottom>
-          <Composer />
-        </ThreadPrimitive.ViewportFooter>
-      </div>
+          <Composer fixtureConnected={fixtureConnected} />
+        </div>
+      </ThreadPrimitive.ViewportFooter>
     </ThreadPrimitive.Viewport>
   </ThreadPrimitive.Root>;
 }
 
-function Welcome() {
+function Welcome({ fixtureConnected }: { fixtureConnected: boolean }) {
   const state = useAppStore((s) => s.connectionState);
-  return <div className="welcome"><div className="pi-mark">π</div><h2>{state === "connected" ? "What should Pi work on?" : "Connect to a Pi instance"}</h2><p>Your remote session remains authoritative. Messages and tool activity are mirrored here.</p></div>;
+  return <div className="welcome"><div className="pi-mark">π</div><h2>{fixtureConnected || state === "connected" ? "What should Pi work on?" : "Connect to a Pi instance"}</h2></div>;
 }
 
 function ThreadMessage() {
@@ -45,7 +48,13 @@ function ThreadMessage() {
 
 function UserMessage() {
   return <MessagePrimitive.Root className="message user-message">
-    <div className="user-bubble"><MessagePrimitive.Parts components={{ Image: MessageImage }} /></div>
+    <div className="user-message-stack">
+      <div className="user-bubble"><MessagePrimitive.Parts components={{ Image: MessageImage }} /></div>
+      <div className="user-message-meta">
+        <ActionBarPrimitive.Root className="user-actions"><ActionBarPrimitive.Copy asChild><button title="Copy prompt"><CopyIcon /></button></ActionBarPrimitive.Copy></ActionBarPrimitive.Root>
+        <MessageMeta />
+      </div>
+    </div>
   </MessagePrimitive.Root>;
 }
 
@@ -111,168 +120,81 @@ function Reasoning({ text }: { text: string }) {
   return text ? <div className="reasoning-text">{text}</div> : null;
 }
 
-export function groupTaskParts(parts: readonly any[]) {
-  const groups: { groupKey: string | undefined; indices: number[] }[] = [];
-  let activityGroup: { groupKey: string; indices: number[] } | undefined;
-  let lastActivityIndex = -1;
-  for (let index = parts.length - 1; index >= 0; index--) {
-    if (parts[index]?.type === "reasoning" || parts[index]?.type === "tool-call") {
-      lastActivityIndex = index;
-      break;
-    }
+const turnPartComponents = { Text: MarkdownText, Reasoning, Image: MessageImage, tools: { Fallback: ToolCard } };
+
+function WorkItemView({ item }: { item: WorkItem }) {
+  if (item.kind === "activity") {
+    return <MessagePrimitive.PartByIndex index={item.partIndex} components={turnPartComponents} />;
   }
-  parts.forEach((part, index) => {
-    const belongsToActivity = index <= lastActivityIndex && (part.type === "text" || part.type === "reasoning" || part.type === "tool-call");
-    if (belongsToActivity) {
-      if (!activityGroup) {
-        activityGroup = { groupKey: `task-activity-${groups.length}`, indices: [] };
-        groups.push(activityGroup);
-      }
-      activityGroup.indices.push(index);
-    } else {
-      activityGroup = undefined;
-      groups.push({ groupKey: undefined, indices: [index] });
-    }
-  });
-  return groups;
-}
-
-export function isTaskActivityRunning(parts: readonly any[], indices: readonly number[], messageRunning: boolean): boolean {
-  let latestActivityIndex = -1;
-  for (let index = parts.length - 1; index >= 0; index--) {
-    if (parts[index]?.type === "reasoning" || parts[index]?.type === "tool-call") {
-      latestActivityIndex = index;
-      break;
-    }
-  }
-  if (!indices.includes(latestActivityIndex)) return false;
-  if (indices.some((index) => parts[index]?.type === "tool-call" && parts[index]?.result === undefined)) return true;
-  const finalAnswerStarted = parts.slice(latestActivityIndex + 1).some((part) => part?.type !== "text" || String(part.text || "").trim().length > 0);
-  return messageRunning && !finalAnswerStarted;
-}
-
-export function isWorkAnswerBoundary(parts: readonly any[], indices: readonly number[]): boolean {
-  let latestActivityIndex = -1;
-  for (let index = parts.length - 1; index >= 0; index--) {
-    if (parts[index]?.type === "reasoning" || parts[index]?.type === "tool-call") {
-      latestActivityIndex = index;
-      break;
-    }
-  }
-  if (latestActivityIndex < 0 || indices[0] !== latestActivityIndex + 1) return false;
-  return indices.some((index) => parts[index]?.type !== "text" || String(parts[index]?.text || "").trim().length > 0);
-}
-
-export function formatWorkedDuration(durationMs: number): string {
-  const totalSeconds = Math.max(0, Math.floor(durationMs / 1000));
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
-  if (hours > 0) return `${hours}h ${minutes}m`;
-  if (minutes > 0) return `${minutes}m ${seconds}s`;
-  return `${seconds}s`;
-}
-
-type ActivityKind = "command" | "edit" | "read" | "search" | "web" | "tool" | "thinking";
-
-function classifyTool(toolName: string): ActivityKind {
-  const name = toolName.toLowerCase().replaceAll("-", "_");
-  if (["apply_patch", "edit", "write"].some((value) => name.includes(value))) return "edit";
-  if (["web_search", "fetch_content", "get_search_content"].some((value) => name.includes(value))) return "web";
-  if (["grep", "glob", "find", "search"].some((value) => name.includes(value))) return "search";
-  if (["bash", "shell", "exec", "command", "terminal"].some((value) => name.includes(value))) return "command";
-  if (["read", "list"].some((value) => name.includes(value)) || /(^|[_.])ls$/.test(name)) return "read";
-  return "tool";
-}
-
-function lowercaseActivityLabel(label: string): string {
-  return `${label.charAt(0).toLowerCase()}${label.slice(1)}`;
-}
-
-function formatActivityList(labels: string[]): string {
-  if (labels.length < 2) return labels[0] ?? "Thinking";
-  const following = labels.slice(1).map(lowercaseActivityLabel);
-  if (labels.length === 2) return `${labels[0]} and ${following[0]}`;
-  return `${labels[0]}, ${following.slice(0, -1).join(", ")}, and ${following.at(-1)}`;
-}
-
-export function summarizeTaskActivity(tools: readonly { toolName?: string; result?: unknown }[], running: boolean): { kind: ActivityKind; label: string } {
-  const relevant = running ? tools.filter((tool) => tool.result === undefined) : tools;
-  const counts = new Map<ActivityKind, number>();
-  relevant.forEach((tool) => {
-    const kind = classifyTool(tool.toolName ?? "tool");
-    counts.set(kind, (counts.get(kind) ?? 0) + 1);
-  });
-  if (counts.size === 0) return { kind: "thinking", label: "Thinking" };
-  const labels = [...counts].map(([kind, count]) => {
-    if (running) return ({ command: "Running commands", edit: "Editing files", read: "Reading files", search: "Searching code", web: "Searching the web", tool: "Using tools", thinking: "Thinking" })[kind];
-    return ({
-      command: count === 1 ? "Ran a command" : "Ran commands",
-      edit: count === 1 ? "Edited a file" : "Edited files",
-      read: count === 1 ? "Read a file" : "Read files",
-      search: "Searched code",
-      web: "Searched the web",
-      tool: count === 1 ? "Used a tool" : "Used tools",
-      thinking: "Thought",
-    })[kind];
-  });
-  return { kind: counts.keys().next().value ?? "tool", label: formatActivityList(labels) };
-}
-
-function ActivityIcon({ kind }: { kind: ActivityKind }) {
-  if (kind === "command") return <Terminal size={14} />;
-  if (kind === "edit") return <PencilLine size={14} />;
-  if (kind === "read" || kind === "search") return <FileSearch size={14} />;
-  if (kind === "web") return <Globe2 size={14} />;
-  return <Wrench size={14} />;
-}
-
-function TaskActivity({ groupKey, indices, children }: { groupKey: string | undefined; indices: number[]; children?: ReactNode }) {
-  const [open, setOpen] = useState(false);
-  const parts = useAssistantState((state) => state.message.parts);
-  const messageRunning = useAssistantState((state) => state.message.status?.type === "running");
-  if (!groupKey) return <>{isWorkAnswerBoundary(parts, indices) && <WorkedDivider />}{children}</>;
-  const tools = indices.map((index) => parts[index]).filter((part) => part?.type === "tool-call");
-  const running = isTaskActivityRunning(parts, indices, messageRunning);
-  const failed = tools.some((part) => part?.type === "tool-call" && part.isError);
-  const summary = summarizeTaskActivity(tools, running);
-  return <details className={`reasoning task-activity ${failed ? "error" : ""}`} open={open} onToggle={(event) => setOpen(event.currentTarget.open)}>
-    <summary>{running ? <LoaderCircle className="spin" size={14} /> : <ActivityIcon kind={summary.kind} />}<span className={running ? "thinking-shimmer" : undefined}>{summary.label}</span><ChevronDown className={open ? "rotate" : ""} size={14} /></summary>
-    <div className="task-activity-content">{children}</div>
-  </details>;
-}
-
-function WorkedDivider() {
-  const timing = useAssistantState((state) => state.message.metadata.custom as { startedAtMs?: number; completedAtMs?: number });
-  const startedAtMs = timing?.startedAtMs;
-  const completedAtMs = timing?.completedAtMs;
-  if (typeof startedAtMs !== "number" || typeof completedAtMs !== "number" || completedAtMs - startedAtMs < 1000) return null;
-  return <div className="worked-divider">
-    <span>Worked for {formatWorkedDuration(completedAtMs - startedAtMs)}<ChevronDown size={14} /></span>
-    <i />
+  return <div className={`work-item ${item.kind}`}>
+    <MessagePrimitive.PartByIndex index={item.partIndex} components={turnPartComponents} />
+    {item.pending && <div className="pending-work"><span className="cadenced-shimmer">Thinking</span></div>}
   </div>;
 }
 
+function useWorkDuration(status: WorkStatus, startedAtMs?: number, completedAtMs?: number) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    if (status !== "running") return;
+    setNow(Date.now());
+    const timer = window.setInterval(() => setNow(Date.now()), 1_000);
+    return () => window.clearInterval(timer);
+  }, [status]);
+  if (typeof startedAtMs !== "number") return "0s";
+  return formatWorkedDuration(Math.max(0, (status === "running" ? now : completedAtMs ?? now) - startedAtMs));
+}
+
+function TurnWorkDisclosure({ work }: { work: NonNullable<ReturnType<typeof createTurnRenderModel>["work"]> }) {
+  const running = work.status === "running";
+  const previousStatus = useRef(work.status);
+  const [open, setOpen] = useState(running || work.status === "error");
+  const duration = useWorkDuration(work.status, work.startedAtMs, work.completedAtMs);
+  useEffect(() => {
+    if (work.status === "running") setOpen(true);
+    else if (previousStatus.current === "running") setOpen(false);
+    previousStatus.current = work.status;
+  }, [work.status]);
+  const label = running ? `Working for ${duration}` : work.status === "cancelled" ? `Stopped after ${duration}` : `Worked for ${duration}`;
+  return <section className={`turn-work ${work.status}`}>
+    <button type="button" className="work-disclosure-trigger" disabled={running} aria-expanded={running ? true : open} onClick={() => setOpen((value) => !value)}>
+      <span>{label}</span>{!running && <ChevronDown className={open ? "rotate" : ""} size={14} />}
+    </button>
+    <div className="work-divider" />
+    {open && <div className="work-transcript">
+      {work.items.length > 0 ? work.items.map((item) => <WorkItemView key={item.id} item={item} />) : <div className="pending-work"><span className="cadenced-shimmer">Thinking</span></div>}
+    </div>}
+  </section>;
+}
+
+function MessageMeta({ className = "" }: { className?: string }) {
+  const createdAt = useAssistantState((state) => state.message.createdAt);
+  if (!(createdAt instanceof Date) || !Number.isFinite(createdAt.getTime())) return null;
+  const label = createdAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  return <time className={`message-time ${className}`} dateTime={createdAt.toISOString()}>{label}</time>;
+}
+
 function AssistantMessage() {
+  const parts = useAssistantState((state) => state.message.parts);
+  const status = useAssistantState((state) => state.message.status as { type?: string; reason?: string } | undefined);
+  const timing = useAssistantState((state) => state.message.metadata.custom as { startedAtMs?: number; completedAtMs?: number });
+  const model = createTurnRenderModel(parts, { messageStatus: status, startedAtMs: timing?.startedAtMs, completedAtMs: timing?.completedAtMs });
   return <MessagePrimitive.Root className="message assistant-message">
     <div className="assistant-content">
-      <MessagePrimitive.Unstable_PartsGrouped groupingFunction={groupTaskParts} components={{ Text: MarkdownText, Reasoning, Group: TaskActivity, tools: { Fallback: ToolCard } }} />
-      <RunningDot />
+      {model.work && <TurnWorkDisclosure work={model.work} />}
+      {model.answerParts.length > 0 && <div className="final-answer">{model.answerParts.map((index) => <MessagePrimitive.PartByIndex key={index} index={index} components={turnPartComponents} />)}</div>}
     </div>
-    <ActionBarPrimitive.Root hideWhenRunning autohide="not-last" className="message-actions">
-      <ActionBarPrimitive.Copy asChild><button title="Copy response"><CopyIcon /></button></ActionBarPrimitive.Copy>
-    </ActionBarPrimitive.Root>
+    <div className="assistant-meta">
+      <ActionBarPrimitive.Root hideWhenRunning autohide="not-last" className="message-actions">
+        <ActionBarPrimitive.Copy asChild><button title="Copy response"><CopyIcon /></button></ActionBarPrimitive.Copy>
+      </ActionBarPrimitive.Root>
+      <MessageMeta />
+    </div>
   </MessagePrimitive.Root>;
 }
 
 function CopyIcon() {
   const copied = useAssistantState((s) => s.message.isCopied);
   return copied ? <Check size={15} /> : <Copy size={15} />;
-}
-
-function RunningDot() {
-  const running = useAssistantState((s) => s.message.status?.type === "running" && s.message.parts.length === 0);
-  return running ? <div className="thinking-placeholder"><span className="thinking-shimmer">Thinking</span></div> : null;
 }
 
 type DisplayCommand = SlashCommand | { name: "new"; description: string; source: "client"; scope: "temporary" };
@@ -335,9 +257,10 @@ function ComposerControls({ connected }: { connected: boolean }) {
   const session = useAppStore((state) => state.session);
   const command = useAppStore((state) => state.command);
   const run = (label: string, promise: Promise<unknown>) => toast.promise(promise, { loading: label, success: `${label} requested`, error: (caught) => caught.message });
-  return <div className="composer-controls">
-    <label><Sparkles size={14} /><select aria-label="Model" disabled={!connected} value={session.model ? `${session.model.provider}/${session.model.id}` : ""} onChange={(event) => { const [provider, ...rest] = event.target.value.split("/"); run("Switch model", command({ type: "set_model", provider, modelId: rest.join("/") })); }}><option value="">Choose model</option>{session.availableModels.map((model) => <option key={`${model.provider}/${model.id}`} value={`${model.provider}/${model.id}`}>{model.name || model.id}</option>)}</select><ChevronDown size={12} /></label>
-    <label><Brain size={14} /><select aria-label="Thinking level" disabled={!connected} value={session.thinkingLevel} onChange={(event) => run("Thinking level", command({ type: "set_thinking", level: event.target.value as any }))}>{["off", "minimal", "low", "medium", "high", "xhigh"].map((value) => <option key={value}>{value}</option>)}</select><ChevronDown size={12} /></label>
+  return <div className="composer-controls" title="Model and thinking level">
+    <label className="model-select"><Sparkles size={14} /><select aria-label="Model" disabled={!connected} value={session.model ? `${session.model.provider}/${session.model.id}` : ""} onChange={(event) => { const [provider, ...rest] = event.target.value.split("/"); run("Switch model", command({ type: "set_model", provider, modelId: rest.join("/") })); }}><option value="">Choose model</option>{session.availableModels.map((model) => <option key={`${model.provider}/${model.id}`} value={`${model.provider}/${model.id}`}>{model.name || model.id}</option>)}</select></label>
+    <i />
+    <label className="thinking-select"><Brain size={14} /><select aria-label="Thinking level" disabled={!connected} value={session.thinkingLevel} onChange={(event) => run("Thinking level", command({ type: "set_thinking", level: event.target.value as any }))}>{["off", "minimal", "low", "medium", "high", "xhigh"].map((value) => <option key={value}>{value}</option>)}</select><ChevronDown size={12} /></label>
   </div>;
 }
 
@@ -365,8 +288,9 @@ function ContextWindowIndicator() {
   </span>;
 }
 
-function Composer() {
-  const connected = useAppStore((s) => s.connectionState === "connected");
+function Composer({ fixtureConnected }: { fixtureConnected: boolean }) {
+  const storeConnected = useAppStore((s) => s.connectionState === "connected");
+  const connected = fixtureConnected || storeConnected;
   const running = useAssistantState((s) => s.thread.isRunning);
   const command = useAppStore((s) => s.command);
   const slashCommands = useAppStore((s) => s.session.commands);
@@ -374,6 +298,7 @@ function Composer() {
   const [guidanceImages, setGuidanceImages] = useState<PastedImage[]>([]);
   const [delivery, setDelivery] = useState<"steer" | "follow_up">("steer");
   const [stopping, setStopping] = useState(false);
+  const guidanceFileInput = useRef<HTMLInputElement>(null);
   if (running) {
     const sendGuidance = () => {
       const message = guidance.trim();
@@ -387,15 +312,19 @@ function Composer() {
         ? { type: "prompt", message, images: images.length ? images : undefined }
         : { type: delivery, message, images: images.length ? images : undefined });
     };
-    const pasteImages = (event: ReactClipboardEvent<HTMLTextAreaElement>) => {
-      const files = Array.from(event.clipboardData.files).filter((file) => file.type.startsWith("image/"));
+    const addImages = (files: File[]) => {
       if (files.length === 0) return;
-      event.preventDefault();
       const available = Math.max(0, 10 - guidanceImages.length);
       if (files.length > available) toast.error("You can send up to 10 images at once.");
       void Promise.all(files.slice(0, available).map(readPastedImage))
         .then((images) => setGuidanceImages((current) => [...current, ...images]))
-        .catch((error) => toast.error(error instanceof Error ? error.message : "Could not paste image"));
+        .catch((error) => toast.error(error instanceof Error ? error.message : "Could not add image"));
+    };
+    const pasteImages = (event: ReactClipboardEvent<HTMLTextAreaElement>) => {
+      const files = Array.from(event.clipboardData.files).filter((file) => file.type.startsWith("image/"));
+      if (files.length === 0) return;
+      event.preventDefault();
+      addImages(files);
     };
     const stop = async () => {
       setStopping(true);
@@ -403,14 +332,18 @@ function Composer() {
       catch (error) { toast.error(error instanceof Error ? error.message : "Could not stop Pi"); }
       finally { setStopping(false); }
     };
+    const hasGuidance = Boolean(guidance.trim() || guidanceImages.length > 0);
     return <div className="composer active-composer">
       <CommandCompletion text={guidance} connected={connected} allowNew={false} onComplete={setGuidance} />
       <GuidanceImages images={guidanceImages} onRemove={(id) => setGuidanceImages((images) => images.filter((image) => image.id !== id))} />
       <textarea value={guidance} onChange={(e) => setGuidance(e.target.value)} onPaste={pasteImages} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); sendGuidance(); } }} rows={1} placeholder={delivery === "steer" ? "Send guidance or paste an image…" : "Queue a follow-up or paste an image…"} />
-      <div className="composer-row"><select value={delivery} onChange={(e) => setDelivery(e.target.value as typeof delivery)}><option value="steer">Steer now</option><option value="follow_up">Follow up</option></select><div>
+      <input ref={guidanceFileInput} className="visually-hidden" type="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple onChange={(event) => { addImages(Array.from(event.target.files ?? [])); event.target.value = ""; }} />
+      <div className="composer-row"><div className="composer-left"><button type="button" className="composer-icon" disabled={!connected} onClick={() => guidanceFileInput.current?.click()} title="Attach images"><Paperclip size={15} /></button><label className="delivery-control"><select aria-label="Guidance delivery" value={delivery} onChange={(e) => setDelivery(e.target.value as typeof delivery)}><option value="steer">Steer now</option><option value="follow_up">Follow up</option></select><ChevronDown size={12} /></label></div><div>
         <ContextWindowIndicator />
-        <button className="stop-button" disabled={!connected || stopping} onClick={() => void stop()} title="Stop Pi"><Square size={11} fill="currentColor" />{stopping ? "Stopping…" : "Stop"}</button>
-        <button className="send-button" disabled={!connected || (!guidance.trim() && guidanceImages.length === 0)} onClick={sendGuidance} title="Send guidance"><ArrowUp size={17} /></button>
+        {hasGuidance && <button className="composer-icon secondary-stop" disabled={!connected || stopping} onClick={() => void stop()} title={stopping ? "Stopping Pi" : "Stop Pi"}><Square size={10} fill="currentColor" /></button>}
+        {hasGuidance
+          ? <button className="send-button" disabled={!connected} onClick={sendGuidance} title="Send guidance"><ArrowUp size={17} /></button>
+          : <button className="send-button stop-control" disabled={!connected || stopping} onClick={() => void stop()} title={stopping ? "Stopping Pi" : "Stop Pi"}><Square size={11} fill="currentColor" /></button>}
       </div></div>
     </div>;
   }
@@ -418,8 +351,8 @@ function Composer() {
     <IdleCommandCompletion connected={connected} />
     <ComposerImages />
     <ComposerPrimitive.Input disabled={!connected} autoFocus rows={1} placeholder={connected ? "Ask Pi to make a change, paste an image, or type /…" : "Select a connected instance"} />
-    <div className="composer-row"><ComposerControls connected={connected} /><div>
-      <ContextWindowIndicator />
+    <div className="composer-row"><div className="composer-left"><ComposerPrimitive.AddAttachment asChild><button type="button" className="composer-icon" disabled={!connected} title="Attach images"><Paperclip size={15} /></button></ComposerPrimitive.AddAttachment></div><div>
+      <ComposerControls connected={connected} /><ContextWindowIndicator />
       <ComposerPrimitive.Send asChild><button className="send-button" disabled={!connected} title="Send"><ArrowUp size={17} /></button></ComposerPrimitive.Send>
     </div></div>
   </ComposerPrimitive.Root>;

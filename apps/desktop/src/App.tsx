@@ -4,6 +4,7 @@ import { Toaster, toast } from "sonner";
 import { ExtensionUiDialog } from "./components/ExtensionUiDialog";
 import { HostSettingsDialog } from "./components/HostSettingsDialog";
 import { NewSessionDialog } from "./components/NewSessionDialog";
+import { ChatFixture } from "./components/assistant-ui/ChatFixture";
 import { Thread } from "./components/assistant-ui/Thread";
 import { ReviewPanel } from "./components/review/ReviewPanel";
 import { PiRuntimeProvider } from "./runtime/PiRuntimeProvider";
@@ -15,6 +16,7 @@ function sessionLabel(name: string | null, cwd: string): string {
 }
 
 export default function App() {
+  const fixtureName = import.meta.env.DEV ? new URLSearchParams(window.location.search).get("chatFixture") : null;
   const hydrate = useAppStore((state) => state.hydrateProfile);
   const profile = useAppStore((state) => state.profile);
   const sessions = useAppStore((state) => state.sessions);
@@ -35,9 +37,11 @@ export default function App() {
   const [newSessionOpen, setNewSessionOpen] = useState(false);
   const [dark, setDark] = useState(() => matchMedia("(prefers-color-scheme: dark)").matches);
 
-  useEffect(() => { void hydrate().then(() => { if (!useAppStore.getState().profile) setSettingsOpen(true); }); }, [hydrate]);
+  useEffect(() => { if (!fixtureName) void hydrate().then(() => { if (!useAppStore.getState().profile) setSettingsOpen(true); }); }, [fixtureName, hydrate]);
   useEffect(() => { document.documentElement.classList.toggle("dark", dark); }, [dark]);
   useEffect(() => { if (error) toast.error(error); }, [error]);
+
+  if (fixtureName) return <ChatFixture name={fixtureName} />;
 
   const run = (label: string, promise: Promise<unknown>) => toast.promise(promise, { loading: label, success: `${label} requested`, error: (caught) => caught.message });
   const connected = state === "connected";
@@ -57,9 +61,9 @@ export default function App() {
         <div className="session-heading"><strong>{session.sessionName || (hasActiveSession ? "Remote Pi session" : "No open session")}</strong><span title={session.cwd || undefined}>{session.cwd || (profile ? "Open a Pi session to begin" : "Configure the connection in Settings")}</span></div>
         <div className="top-actions">
           <div className={`connection-pill ${state}`} title={detail}><i />{state}</div>
-          <button disabled={!connected || sessions.length >= maxSessions} onClick={() => setNewSessionOpen(true)}><FilePlus2 size={15} /> New</button>
-          <button disabled={!sessionReady || hasGlobalReview} className={session.planPhase !== "idle" ? "active-control" : ""} onClick={() => run("Plan mode", command({ type: "set_plan_mode", mode: session.planPhase === "idle" ? "enter" : "exit" }))}><Zap size={15} /> Plan</button>
-          <button disabled={!sessionReady || hasGlobalReview} onClick={() => run("Code review", command({ type: "start_code_review" }))}><Code2 size={15} /> Review</button>
+          <button className="new-action" disabled={!connected || sessions.length >= maxSessions} onClick={() => setNewSessionOpen(true)}><FilePlus2 size={15} /> New</button>
+          <button disabled={!sessionReady || hasGlobalReview} className={`plan-action ${session.planPhase !== "idle" ? "active-control" : ""}`} onClick={() => run("Plan mode", command({ type: "set_plan_mode", mode: session.planPhase === "idle" ? "enter" : "exit" }))}><Zap size={15} /> Plan</button>
+          <button className="review-action" disabled={!sessionReady || hasGlobalReview} onClick={() => run("Code review", command({ type: "start_code_review" }))}><Code2 size={15} /> Review</button>
           <button className="icon-button" disabled={!sessionReady || session.isRunning} onClick={() => run("Compact", command({ type: "compact" }))} title="Compact context"><Archive size={16} /></button>
           <button className="icon-button" onClick={() => setSettingsOpen(true)} title="Connection settings"><Settings size={16} /></button>
           <button className="icon-button" onClick={() => setDark((value) => !value)} title="Toggle theme">{dark ? <Sun size={16} /> : <Moon size={16} />}</button>
