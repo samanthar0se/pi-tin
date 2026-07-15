@@ -216,7 +216,7 @@ Codex shows completed assistant actions directly beneath the answer. Its full ro
 
 Pi Tin should not clone controls it cannot honor. Recommended treatment:
 
-- Keep assistant copy, place it in the same 28px action rail, and show it for the latest completed answer plus hover/focus for older answers.
+- Keep assistant copy in the same 28px action rail and reveal it on message hover or keyboard focus for every completed answer.
 - Add user-message copy.
 - Do not add edit unless Pi gains an authoritative historical-message edit operation.
 - Do not add ratings.

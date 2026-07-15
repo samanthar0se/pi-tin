@@ -209,7 +209,7 @@ function AssistantMessage() {
       {model.answerParts.length > 0 && <div className="final-answer">{model.answerParts.map((index) => <MessagePrimitive.PartByIndex key={index} index={index} components={turnPartComponents} />)}</div>}
     </div>
     <div className="assistant-meta">
-      <ActionBarPrimitive.Root hideWhenRunning autohide="not-last" className="message-actions">
+      <ActionBarPrimitive.Root hideWhenRunning autohide="never" className="message-actions">
         <ActionBarPrimitive.Copy asChild><button title="Copy response"><CopyIcon /></button></ActionBarPrimitive.Copy>
       </ActionBarPrimitive.Root>
       <MessageMeta />
