@@ -4,10 +4,18 @@ import { WebSocket, WebSocketServer } from "ws";
 import { BUILD_REVISION } from "./build-info.ts";
 import type { HostBackend } from "./types.ts";
 
+const INITIAL_SYNC_TIMEOUT_MS = 30_000;
+const MAX_INITIAL_SYNC_QUEUE = 512;
+
 export class HostWebSocketServer {
   private http: HttpServer | null = null;
   private wss: WebSocketServer | null = null;
-  private clients = new Map<WebSocket, { authenticated: boolean; timer: NodeJS.Timeout }>();
+  private clients = new Map<WebSocket, {
+    authenticated: boolean;
+    syncing: boolean;
+    queued: ServerMessage[];
+    timer: NodeJS.Timeout;
+  }>();
   private unsubscribe: (() => void) | null = null;
 
   constructor(private backend: HostBackend, private host: string, private port: number) {}
@@ -49,7 +57,7 @@ export class HostWebSocketServer {
 
   private accept(socket: WebSocket): void {
     const timer = setTimeout(() => socket.close(4001, "Authentication timeout"), 5_000);
-    this.clients.set(socket, { authenticated: false, timer });
+    this.clients.set(socket, { authenticated: false, syncing: false, queued: [], timer });
     socket.on("message", async (bytes) => {
       let raw: any;
       try { raw = JSON.parse(bytes.toString()); }
@@ -69,8 +77,28 @@ export class HostWebSocketServer {
           this.send(socket, { type: "error", code: "unauthorized", message: "Authentication failed." });
           socket.close(4003, "Unauthorized"); return;
         }
-        state.authenticated = true; clearTimeout(state.timer);
-        for (const message of await this.backend.initialMessages()) this.send(socket, message);
+        state.authenticated = true;
+        state.syncing = true;
+        clearTimeout(state.timer);
+        let synced = false;
+        try {
+          const messages = await withTimeout(this.backend.initialMessages(), INITIAL_SYNC_TIMEOUT_MS);
+          if (!state.authenticated || socket.readyState !== WebSocket.OPEN) return;
+          for (const message of messages) this.send(socket, message);
+          synced = true;
+        } catch (error) {
+          state.authenticated = false;
+          this.send(socket, {
+            type: "error",
+            code: "initial_sync_failed",
+            message: error instanceof Error ? error.message : "Could not synchronize with the Pi host.",
+          });
+          socket.close(1011, "Initial synchronization failed");
+        } finally {
+          state.syncing = false;
+          if (synced) for (const message of state.queued) this.send(socket, message);
+          state.queued = [];
+        }
         return;
       }
       if (parsed.data.type === "auth") return;
@@ -97,6 +125,29 @@ export class HostWebSocketServer {
   }
 
   private broadcast(message: ServerMessage): void {
-    for (const [socket, state] of this.clients) if (state.authenticated) this.send(socket, message);
+    for (const [socket, state] of this.clients) {
+      if (!state.authenticated) continue;
+      if (state.syncing && state.queued.length >= MAX_INITIAL_SYNC_QUEUE) {
+        state.authenticated = false;
+        state.syncing = false;
+        state.queued = [];
+        socket.close(1013, "Initial synchronization overloaded");
+      } else if (state.syncing) state.queued.push(message);
+      else this.send(socket, message);
+    }
+  }
+}
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error("Initial host synchronization timed out.")), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
   }
 }

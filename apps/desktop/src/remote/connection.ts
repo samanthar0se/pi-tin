@@ -103,8 +103,9 @@ export class PiConnection {
       if (generation !== this.generation) return;
       this.socket = null;
       this.rejectPending("Connection closed");
-      if (this.stopped || event.code === 4002 || event.code === 4003) {
-        this.hooks.onState(event.code === 4002 || event.code === 4003 ? "error" : "offline", event.reason || undefined);
+      const terminalError = event.code === 4002 || event.code === 4003 || event.code === 4004;
+      if (this.stopped || terminalError) {
+        this.hooks.onState(terminalError ? "error" : "offline", event.reason || undefined);
         return;
       }
       this.hooks.onState("offline", "Reconnecting…");

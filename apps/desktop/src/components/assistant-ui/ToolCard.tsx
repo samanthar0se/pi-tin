@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Check, ChevronRight, Copy, FilePenLine, FileSearch, Globe2, Search, Terminal, Wrench } from "lucide-react";
 import { createActivityViewModel, type ActivityKind } from "./turn-model";
 
@@ -92,6 +92,7 @@ function ActivityDetail({ kind, ...props }: ToolCardProps & { kind: ActivityKind
 
 export function ToolCard(props: ToolCardProps) {
   const [open, setOpen] = useState(Boolean(props.isError));
+  useEffect(() => { if (props.isError) setOpen(true); }, [props.isError]);
   const activity = createActivityViewModel({ ...props, result: props.isRunning ? undefined : props.result }, 0);
   const hasDetail = Boolean(activity.detailSummary || props.argsText || props.result !== undefined);
   return <div className={`activity-item ${activity.status} ${open ? "open" : ""}`}>

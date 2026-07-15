@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -26,14 +26,19 @@ const defaultCwd = process.env.PI_TIN_CWD || process.env.PI_REMOTE_CWD || proces
 type RpcStatus = "starting" | "ready" | "error" | "stopped";
 type PersistedSession = { id: string; cwd: string; sessionPath?: string | null };
 type SessionCommand = Exclude<ClientCommand, { type: "create_session" | "close_session" }>;
+type HostStateLoadResult =
+  | { status: "valid"; sessions: PersistedSession[]; warnings: string[]; invalidPaths: string[] }
+  | { status: "missing"; warnings: []; invalidPaths: [] }
+  | { status: "invalid"; warnings: string[]; invalidPaths: string[] };
 
 export class HostController implements HostBackend {
   private listeners = new Set<(message: ServerMessage) => void>();
   private sessions = new Map<string, PiSessionRuntime>();
+  private persistenceEnabled = true;
   readonly tokenStore = createTokenStore();
   readonly review: ReviewTracker;
 
-  constructor() {
+  constructor(private readonly rpcCliPath?: string) {
     const port = Number(process.env.PLANNOTATOR_PORT || 19432);
     this.review = new ReviewTracker(`http://localhost:${port}`, (message) => {
       this.emit(message);
@@ -57,7 +62,12 @@ export class HostController implements HostBackend {
 
   async start(): Promise<void> {
     const saved = readHostState();
-    const records = saved.length > 0 ? saved.slice(0, MAX_SESSIONS) : [{ id: randomUUID(), cwd: normalizeCwd(defaultCwd) }];
+    for (const warning of saved.warnings) console.warn(`[pi-tin] ${warning}`);
+    this.persistenceEnabled = preserveInvalidStateFiles(saved.invalidPaths);
+    if (!this.persistenceEnabled) console.warn("[pi-tin] Host state persistence is disabled to avoid overwriting an invalid file that could not be backed up.");
+    const records = saved.status === "valid"
+      ? saved.sessions.slice(0, MAX_SESSIONS)
+      : [{ id: randomUUID(), cwd: normalizeCwd(defaultCwd) }];
     for (const record of records) {
       if (this.sessions.has(record.id)) continue;
       this.sessions.set(record.id, this.createRuntime(record));
@@ -67,6 +77,7 @@ export class HostController implements HostBackend {
   }
 
   async stop(): Promise<void> {
+    this.review.dispose();
     await Promise.allSettled([...this.sessions.values()].map((session) => session.stop()));
   }
 
@@ -85,8 +96,14 @@ export class HostController implements HostBackend {
   }
 
   private async createSession(cwdInput: string): Promise<{ sessionId: string }> {
+    const cwd = normalizeCwd(cwdInput);
+    const existing = [...this.sessions.values()].find((session) => sameCwd(session.cwd, cwd));
+    if (existing) {
+      if (existing.isClosing()) throw new Error("This workspace is still closing. Try again in a moment.");
+      return { sessionId: existing.id };
+    }
     if (this.sessions.size >= MAX_SESSIONS) throw new Error(`Pi Tin supports up to ${MAX_SESSIONS} open sessions.`);
-    const record = { id: randomUUID(), cwd: normalizeCwd(cwdInput) };
+    const record = { id: randomUUID(), cwd };
     const session = this.createRuntime(record);
     this.sessions.set(record.id, session);
     this.persist();
@@ -104,8 +121,7 @@ export class HostController implements HostBackend {
   private async closeSession(sessionId: string): Promise<{ sessionId: string }> {
     const session = this.sessions.get(sessionId);
     if (!session) throw new Error("This Pi session is no longer open.");
-    session.assertClosable();
-    await session.stop();
+    await session.close();
     this.sessions.delete(sessionId);
     this.persist();
     this.emitSessionList();
@@ -117,6 +133,7 @@ export class HostController implements HostBackend {
       record.id,
       record.cwd,
       record.sessionPath || null,
+      this.rpcCliPath,
       this.review,
       (message) => this.emit(message),
       () => { this.persist(); this.emitSessionList(); },
@@ -136,6 +153,7 @@ export class HostController implements HostBackend {
   private emit(message: ServerMessage): void { for (const listener of this.listeners) listener(message); }
 
   private persist(): void {
+    if (!this.persistenceEnabled) return;
     mkdirSync(dirname(statePath), { recursive: true });
     const sessions = [...this.sessions.values()].map((session) => session.persisted());
     writeFileSync(statePath, JSON.stringify({ version: 2, sessions }, null, 2));
@@ -150,13 +168,19 @@ class PiSessionRuntime {
   private rpcStatus: RpcStatus = "stopped";
   private planPhase: Snapshot["planPhase"] = "idle";
   private healthTimer: NodeJS.Timeout | null = null;
+  private healthCheckPending = false;
   private recovering = false;
+  private restartPending = false;
+  private closing = false;
+  private closed = false;
+  private lifecycle: Promise<void> = Promise.resolve();
   private pendingUiRequest: ExtensionUiRequest | null = null;
 
   constructor(
     readonly id: string,
     readonly cwd: string,
     sessionPath: string | null,
+    private readonly rpcCliPath: string | undefined,
     private review: ReviewTracker,
     private emit: (message: ServerMessage) => void,
     private persistAll: () => void,
@@ -165,19 +189,40 @@ class PiSessionRuntime {
   }
 
   async start(): Promise<void> {
-    await this.startRpc(this.cwd, this.activePath && existsSync(this.activePath) ? this.activePath : undefined);
-    this.healthTimer = setInterval(() => void this.checkRpcHealth(), 5_000);
-    this.emit(await this.snapshot());
+    await this.serializeLifecycle(async () => {
+      await this.startRpc(this.cwd, this.activePath && existsSync(this.activePath) ? this.activePath : undefined);
+      this.emit(await this.snapshot());
+    });
   }
 
   async stop(): Promise<void> {
+    await this.serializeLifecycle(() => this.stopNow());
+  }
+
+  async close(): Promise<void> {
+    if (this.closing || this.closed) throw new Error("This Pi session is already closing.");
+    this.closing = true;
+    try {
+      await this.serializeLifecycle(async () => {
+        this.assertClosable();
+        await this.stopNow();
+        this.closed = true;
+      });
+    } finally {
+      this.closing = false;
+    }
+  }
+
+  private async stopNow(): Promise<void> {
     if (this.healthTimer) clearInterval(this.healthTimer);
     this.healthTimer = null;
     this.rpcStatus = "stopped";
+    this.running = false;
     this.pendingUiRequest = null;
     this.emitHostState();
-    await this.rpc?.stop();
+    const rpc = this.rpc;
     this.rpc = null;
+    await rpc?.stop();
   }
 
   async initialMessages(): Promise<ServerMessage[]> {
@@ -186,10 +231,13 @@ class PiSessionRuntime {
       try { messages.push(await this.snapshot()); } catch {}
     }
     if (this.pendingUiRequest) messages.push(this.pendingUiRequest);
+    const activeReview = this.review.currentStartMessage(this.id);
+    if (activeReview) messages.push(activeReview);
     return messages;
   }
 
   async handle(command: SessionCommand): Promise<{ data?: unknown }> {
+    if (this.closing || this.closed) throw new Error("This Pi session is closing.");
     if (command.type === "restart_pi") return { data: await this.restartRpc() };
     if (command.type === "new_session") return { data: await this.newSession() };
     if (command.type === "extension_ui_response") { await this.respondToExtensionUi(command); return {}; }
@@ -221,7 +269,9 @@ class PiSessionRuntime {
 
   persisted(): PersistedSession { return { id: this.id, cwd: this.cwd, sessionPath: this.activePath }; }
 
-  assertClosable(): void {
+  isClosing(): boolean { return this.closing || this.closed; }
+
+  private assertClosable(): void {
     if (this.running) throw new Error("Stop Pi before closing this session.");
     if (this.review.active?.sessionId === this.id) throw new Error("Finish the active review before closing this session.");
   }
@@ -245,36 +295,42 @@ class PiSessionRuntime {
   }
 
   private async restartRpc(): Promise<{ sessionFile: string | null }> {
-    if (this.rpcStatus === "starting" || this.recovering) throw new Error("Pi is already restarting.");
-    if (this.review.active?.sessionId === this.id) throw new Error("Finish the active review before restarting Pi.");
-    const rpc = this.rpc;
-    if (rpc) {
-      try {
-        const state = await rpc.getState();
-        this.activePath = state.sessionFile || this.activePath;
-        this.sessionName = state.sessionName || null;
-        this.persistAll();
-      } catch {}
+    if (this.rpcStatus === "starting" || this.recovering || this.restartPending) throw new Error("Pi is already restarting.");
+    this.restartPending = true;
+    try {
+      return await this.serializeLifecycle(async () => {
+        if (this.review.active?.sessionId === this.id) throw new Error("Finish the active review before restarting Pi.");
+        const rpc = this.rpc;
+        if (rpc) {
+          try {
+            const state = await rpc.getState();
+            this.activePath = state.sessionFile || this.activePath;
+            this.sessionName = state.sessionName || null;
+            this.persistAll();
+          } catch {}
+        }
+        this.rpc = null;
+        this.running = false;
+        this.pendingUiRequest = null;
+        this.rpcStatus = "starting";
+        this.emitHostState();
+        if (rpc) try { await rpc.stop(); } catch {}
+        await this.startRpc(this.cwd, this.activePath && existsSync(this.activePath) ? this.activePath : undefined);
+        this.emit(await this.snapshot());
+        return { sessionFile: this.activePath };
+      });
+    } finally {
+      this.restartPending = false;
     }
-    this.rpc = null;
-    this.running = false;
-    this.pendingUiRequest = null;
-    this.rpcStatus = "starting";
-    this.emitHostState();
-    if (rpc) try { await rpc.stop(); } catch {}
-    await this.startRpc(this.cwd, this.activePath && existsSync(this.activePath) ? this.activePath : undefined);
-    this.emit(await this.snapshot());
-    return { sessionFile: this.activePath };
   }
 
   private async startRpc(cwd: string, sessionPath?: string): Promise<void> {
     this.rpcStatus = "starting";
     this.emitHostState();
-    const rpcEntry = fileURLToPath(import.meta.resolve("@earendil-works/pi-coding-agent/rpc-entry"));
-    const cliPath = resolve(dirname(rpcEntry), "cli.js");
-    const rpc = new RpcClient({ cliPath, cwd, args: sessionPath ? ["--session", sessionPath] : [], env: { PLANNOTATOR_REMOTE: "1" } });
-    rpc.onEvent((event) => this.onRpcEvent(event as any));
+    let rpc: RpcClient | null = null;
     try {
+      rpc = new RpcClient({ cliPath: this.rpcCliPath ?? defaultRpcCliPath(), cwd, args: sessionPath ? ["--session", sessionPath] : [], env: { PLANNOTATOR_REMOTE: "1" } });
+      rpc.onEvent((event) => this.onRpcEvent(event as any));
       await rpc.start();
       this.rpc = rpc;
       this.rpcStatus = "ready";
@@ -283,9 +339,10 @@ class PiSessionRuntime {
       this.sessionName = state.sessionName || null;
       this.running = state.isStreaming;
       this.persistAll();
+      this.ensureHealthMonitoring();
       this.emitHostState();
     } catch (error) {
-      try { await rpc.stop(); } catch {}
+      if (rpc) try { await rpc.stop(); } catch {}
       this.rpc = null;
       this.running = false;
       this.rpcStatus = "error";
@@ -415,12 +472,18 @@ class PiSessionRuntime {
   }
 
   private async checkRpcHealth(): Promise<void> {
+    await this.serializeLifecycle(() => this.checkRpcHealthNow());
+  }
+
+  private async checkRpcHealthNow(): Promise<void> {
     if (this.recovering || this.rpcStatus !== "ready" || !this.rpc) return;
     try {
       await this.rpc.getState();
     } catch {
       this.recovering = true;
       this.rpcStatus = "error";
+      this.running = false;
+      this.pendingUiRequest = null;
       this.emitHostState();
       try {
         await this.rpc?.stop();
@@ -439,6 +502,21 @@ class PiSessionRuntime {
         this.recovering = false;
       }
     }
+  }
+
+  private ensureHealthMonitoring(): void {
+    if (this.healthTimer) return;
+    this.healthTimer = setInterval(() => {
+      if (this.healthCheckPending) return;
+      this.healthCheckPending = true;
+      void this.checkRpcHealth().finally(() => { this.healthCheckPending = false; });
+    }, 5_000);
+  }
+
+  private serializeLifecycle<T>(operation: () => Promise<T>): Promise<T> {
+    const result = this.lifecycle.then(operation, operation);
+    this.lifecycle = result.then(() => undefined, () => undefined);
+    return result;
   }
 
   private hostState(): ServerMessage {
@@ -464,22 +542,89 @@ function normalizeCwd(input: string): string {
   return path;
 }
 
-function readHostState(): PersistedSession[] {
+function sameCwd(left: string, right: string): boolean {
+  return process.platform === "win32" ? left.toLowerCase() === right.toLowerCase() : left === right;
+}
+
+function readHostState(): HostStateLoadResult {
+  const warnings: string[] = [];
+  const invalidPaths = new Set<string>();
+  let foundStateFile = false;
   for (const path of [statePath, legacyStatePath]) {
+    if (!existsSync(path)) continue;
+    foundStateFile = true;
     try {
       const value = JSON.parse(readFileSync(path, "utf8"));
       if (Array.isArray(value.sessions)) {
-        return value.sessions.flatMap((session: any) => {
-          if (!session?.id || !session?.cwd) return [];
+        const sessions = value.sessions.flatMap((session: any, index: number) => {
+          if (!session?.id || !session?.cwd) {
+            invalidPaths.add(path);
+            warnings.push(`Ignored invalid session record ${index} in ${path}: id and cwd are required.`);
+            return [];
+          }
           try {
             return [{ id: String(session.id), cwd: normalizeCwd(String(session.cwd)), sessionPath: session.sessionPath ? String(session.sessionPath) : null }];
-          } catch { return []; }
+          } catch (error) {
+            invalidPaths.add(path);
+            warnings.push(`Ignored invalid session record ${index} in ${path}: ${errorMessage(error)}`);
+            return [];
+          }
         });
+        if (value.sessions.length > 0 && sessions.length === 0) {
+          warnings.push(`No valid session records were found in ${path}.`);
+          continue;
+        }
+        return { status: "valid", sessions, warnings, invalidPaths: [...invalidPaths] };
       }
       if (value.cwd) {
-        return [{ id: randomUUID(), cwd: normalizeCwd(String(value.cwd)), sessionPath: value.sessionPath ? String(value.sessionPath) : null }];
+        try {
+          return {
+            status: "valid",
+            sessions: [{ id: randomUUID(), cwd: normalizeCwd(String(value.cwd)), sessionPath: value.sessionPath ? String(value.sessionPath) : null }],
+            warnings,
+            invalidPaths: [...invalidPaths],
+          };
+        } catch (error) {
+          invalidPaths.add(path);
+          warnings.push(`Could not load legacy host state from ${path}: ${errorMessage(error)}`);
+          continue;
+        }
       }
-    } catch {}
+      invalidPaths.add(path);
+      warnings.push(`Host state in ${path} does not contain a sessions array or legacy cwd.`);
+    } catch (error) {
+      invalidPaths.add(path);
+      warnings.push(`Could not read host state from ${path}: ${errorMessage(error)}`);
+    }
   }
-  return [];
+  if (!foundStateFile) return { status: "missing", warnings: [], invalidPaths: [] };
+  return {
+    status: "invalid",
+    warnings: [...warnings, "Saved host state was invalid; using the default session instead."],
+    invalidPaths: [...invalidPaths],
+  };
+}
+
+function preserveInvalidStateFiles(paths: string[]): boolean {
+  let preserved = true;
+  for (const path of paths) {
+    try {
+      const backupPath = `${path}.invalid-${Date.now()}-${randomUUID().slice(0, 8)}`;
+      copyFileSync(path, backupPath);
+      console.warn(`[pi-tin] Preserved invalid host state at ${backupPath}.`);
+    } catch (error) {
+      preserved = false;
+      console.warn(`[pi-tin] Could not preserve invalid host state from ${path}: ${errorMessage(error)}`);
+    }
+  }
+  return preserved;
+}
+
+function defaultRpcCliPath(): string {
+  const rpcEntry = fileURLToPath(import.meta.resolve("@earendil-works/pi-coding-agent/rpc-entry"));
+  return resolve(dirname(rpcEntry), "cli.js");
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }

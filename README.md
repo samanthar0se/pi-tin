@@ -120,14 +120,14 @@ New-NetFirewallRule -DisplayName "Pi Tin Plannotator" -Direction Inbound -Action
 2. Open Connection Settings from the gear in the top toolbar.
 3. Enter the host/IP, `31415`, `19432`, and token, then save and connect.
 4. Reopen Settings whenever the single connection needs to be changed or removed.
-5. Use **New** to open another runtime, entering an existing absolute working directory on the Pi host.
+5. Use **Open** to open another workspace runtime, entering an existing absolute working directory on the Pi host. Opening a directory that is already active switches to its existing runtime.
 
 The token is stored in Tauri Store as local application data, not Windows Credential Manager. This is an explicit personal-project tradeoff.
 
 ## Chat and reviews
 
 - Use the compact session tabs to switch between up to five independently running Pi sessions. Closing a tab stops that runtime but keeps its native Pi transcript on the host.
-- **New** opens another runtime with its own working directory. `/new` starts a fresh transcript inside the selected runtime.
+- **Open** opens another workspace runtime with its own working directory. `/new` starts a fresh transcript inside the selected runtime.
 - Send normally while the selected Pi session is idle. Sending while it runs is delivered as steering guidance.
 - Paste PNG, JPEG, GIF, or WebP images into either composer to preview and send them with a prompt or guidance.
 - Type `/` in the composer to discover and invoke the host's current extension, prompt-template, and skill commands.

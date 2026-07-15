@@ -17,6 +17,7 @@ import { ToolCard } from "./ToolCard";
 import { createTurnRenderModel, formatWorkedDuration, formatWorkText, type WorkItem, type WorkStatus } from "./turn-model";
 import { useAppStore } from "../../remote/store";
 import { clientSlashCommands, type ClientSlashCommand } from "../../runtime/client-slash-commands";
+import type { GuidanceDelivery, GuidanceImageDraft } from "../../runtime/session-draft";
 
 type ThreadScrollPosition = { scrollTop: number; isAtBottom: boolean };
 const threadScrollPositions = new Map<string, ThreadScrollPosition>();
@@ -55,7 +56,7 @@ export function Thread({ fixtureConnected = false }: { fixtureConnected?: boolea
           <ThreadPrimitive.ScrollToBottom asChild>
             <button className="scroll-bottom" title="Scroll to bottom"><ArrowDown size={16} /></button>
           </ThreadPrimitive.ScrollToBottom>
-          <Composer fixtureConnected={fixtureConnected} />
+          <Composer fixtureConnected={fixtureConnected} sessionId={sessionId} />
         </div>
       </ThreadPrimitive.ViewportFooter>
     </ThreadPrimitive.Viewport>
@@ -64,7 +65,14 @@ export function Thread({ fixtureConnected = false }: { fixtureConnected?: boolea
 
 function Welcome({ fixtureConnected }: { fixtureConnected: boolean }) {
   const state = useAppStore((s) => s.connectionState);
-  return <div className="welcome"><div className="pi-mark">π</div><h2>{fixtureConnected || state === "connected" ? "What should Pi work on?" : "Connect to a Pi instance"}</h2></div>;
+  const rpcStatus = useAppStore((s) => s.rpcStatus);
+  const title = fixtureConnected || (state === "connected" && rpcStatus === "ready")
+    ? "What should Pi work on?"
+    : state !== "connected" ? "Reconnect to your Pi host"
+    : rpcStatus === "starting" ? "Pi is starting…"
+    : rpcStatus === "error" ? "Pi needs a restart"
+    : "Waiting for Pi…";
+  return <div className="welcome"><div className="pi-mark">π</div><h2>{title}</h2></div>;
 }
 
 function ThreadMessage() {
@@ -110,7 +118,7 @@ function ComposerImages() {
   return count > 0 ? <div className="composer-images"><ComposerPrimitive.Attachments components={{ Image: ComposerImageAttachment }} /></div> : null;
 }
 
-type PastedImage = ImageInput & { id: string; name: string; preview: string };
+type PastedImage = GuidanceImageDraft;
 const supportedImageTypes = new Set<ImageInput["mimeType"]>(["image/png", "image/jpeg", "image/gif", "image/webp"]);
 
 function readPastedImage(file: File): Promise<PastedImage> {
@@ -167,7 +175,7 @@ function ActivityGroupView({ item }: { item: Extract<WorkItem, { kind: "activity
   const [open, setOpen] = useState(status === "running" || status === "error");
   const previousStatus = useRef(status);
   useEffect(() => {
-    if (status === "running") setOpen(true);
+    if (status === "running" || status === "error") setOpen(true);
     else if (previousStatus.current === "running") setOpen(false);
     previousStatus.current = status;
   }, [status]);
@@ -200,11 +208,11 @@ function TurnWorkDisclosure({ work }: { work: NonNullable<ReturnType<typeof crea
   const [open, setOpen] = useState(running || work.status === "error");
   const duration = useWorkDuration(work.status, work.startedAtMs, work.completedAtMs);
   useEffect(() => {
-    if (work.status === "running") setOpen(true);
+    if (work.status === "running" || work.status === "error") setOpen(true);
     else if (previousStatus.current === "running") setOpen(false);
     previousStatus.current = work.status;
   }, [work.status]);
-  const label = running ? `Working for ${duration}` : work.status === "cancelled" ? `Stopped after ${duration}` : `Worked for ${duration}`;
+  const label = running ? `Working for ${duration}` : work.status === "cancelled" ? `Stopped after ${duration}` : work.status === "error" ? `Work failed after ${duration}` : `Worked for ${duration}`;
   return <section className={`turn-work ${work.status}`}>
     <button type="button" className="work-disclosure-trigger" disabled={running} aria-expanded={running ? true : open} onClick={() => setOpen((value) => !value)}>
       <span>{label}</span>{!running && <ChevronDown className={open ? "rotate" : ""} size={14} />}
@@ -337,36 +345,85 @@ function ContextWindowIndicator() {
   </span>;
 }
 
-function Composer({ fixtureConnected }: { fixtureConnected: boolean }) {
-  const storeConnected = useAppStore((s) => s.connectionState === "connected");
-  const connected = fixtureConnected || storeConnected;
+function Composer({ fixtureConnected, sessionId }: { fixtureConnected: boolean; sessionId: string | null }) {
+  const connectionState = useAppStore((s) => s.connectionState);
+  const rpcStatus = useAppStore((s) => s.rpcStatus);
+  const interactive = fixtureConnected || (connectionState === "connected" && rpcStatus === "ready");
   const running = useAssistantState((s) => s.thread.isRunning);
   const operation = useAppStore((s) => s.session.operation);
   const command = useAppStore((s) => s.command);
   const slashCommands = useAppStore((s) => s.session.commands);
-  const [guidance, setGuidance] = useState("");
-  const [guidanceImages, setGuidanceImages] = useState<PastedImage[]>([]);
-  const [delivery, setDelivery] = useState<"steer" | "follow_up">("steer");
+  const sessionDraft = useAppStore((s) => sessionId ? s.sessionViews[sessionId]?.draft : undefined);
+  const updateSessionDraft = useAppStore((s) => s.updateSessionDraft);
+  const [fixtureGuidance, setFixtureGuidance] = useState("");
+  const [fixtureGuidanceImages, setFixtureGuidanceImages] = useState<PastedImage[]>([]);
+  const [fixtureDelivery, setFixtureDelivery] = useState<GuidanceDelivery>("steer");
+  const guidance = sessionDraft?.guidanceText ?? fixtureGuidance;
+  const guidanceImages = sessionDraft?.guidanceImages ?? fixtureGuidanceImages;
+  const delivery = sessionDraft?.guidanceDelivery ?? fixtureDelivery;
+  const setGuidance = (value: string) => {
+    if (sessionId) updateSessionDraft(sessionId, (draft) => ({ ...draft, guidanceText: value }));
+    else setFixtureGuidance(value);
+  };
+  const setGuidanceImages = (update: PastedImage[] | ((current: PastedImage[]) => PastedImage[])) => {
+    if (sessionId) updateSessionDraft(sessionId, (draft) => ({
+      ...draft,
+      guidanceImages: typeof update === "function" ? update(draft.guidanceImages) : update,
+    }));
+    else setFixtureGuidanceImages(update);
+  };
+  const setDelivery = (value: GuidanceDelivery) => {
+    if (sessionId) updateSessionDraft(sessionId, (draft) => ({ ...draft, guidanceDelivery: value }));
+    else setFixtureDelivery(value);
+  };
+  const [sendingGuidance, setSendingGuidance] = useState(false);
   const [stopping, setStopping] = useState(false);
   const guidanceFileInput = useRef<HTMLInputElement>(null);
+
+  if (!interactive) {
+    const title = connectionState === "connecting" ? "Connecting to the Pi host…"
+      : connectionState !== "connected" ? "Pi is offline"
+      : rpcStatus === "starting" ? "Starting this Pi runtime…"
+      : rpcStatus === "error" ? "This Pi runtime needs attention"
+      : "This Pi runtime is unavailable";
+    const detail = connectionState !== "connected"
+      ? "Your transcript is safe. Sending will return when the connection recovers."
+      : rpcStatus === "starting" ? "The composer will be ready as soon as Pi finishes starting."
+      : rpcStatus === "error" ? "Use Retry Pi in the toolbar to restore this session."
+      : "Wait for the runtime to become ready before sending.";
+    return <div className="composer unavailable-composer" role="status" aria-live="polite">
+      {(connectionState === "connecting" || rpcStatus === "starting") && <LoaderCircle className="spin" size={18} />}
+      <div><strong>{title}</strong><span>{detail}</span></div>
+    </div>;
+  }
+
   if (operation === "compacting") {
     return <div className="composer compacting-composer" role="status" aria-live="polite" aria-busy="true">
       <LoaderCircle className="spin" size={18} />
       <div><strong>Compacting context…</strong><span>Pi is summarizing this session. The composer will return when it finishes.</span></div>
     </div>;
   }
-  if (running) {
-    const sendGuidance = () => {
+
+  const hasGuidance = Boolean(guidance.trim() || guidanceImages.length > 0);
+  if (running || hasGuidance) {
+    const sendGuidance = async () => {
       const message = guidance.trim();
-      if (!message && guidanceImages.length === 0) return;
-      setGuidance("");
-      setGuidanceImages([]);
+      if ((!message && guidanceImages.length === 0) || sendingGuidance) return;
       const commandName = message.startsWith("/") ? message.slice(1).split(/\s/, 1)[0] : undefined;
       const slashCommand = slashCommands.find((candidate) => candidate.name === commandName);
       const images = guidanceImages.map(({ type, data, mimeType }) => ({ type, data, mimeType }));
-      void command(slashCommand?.source === "extension"
-        ? { type: "prompt", message, images: images.length ? images : undefined }
-        : { type: delivery, message, images: images.length ? images : undefined });
+      setSendingGuidance(true);
+      try {
+        await command(slashCommand?.source === "extension" || !running
+          ? { type: "prompt", message, images: images.length ? images : undefined }
+          : { type: delivery, message, images: images.length ? images : undefined });
+        setGuidance("");
+        setGuidanceImages([]);
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Could not send guidance");
+      } finally {
+        setSendingGuidance(false);
+      }
     };
     const addImages = (files: File[]) => {
       if (files.length === 0) return;
@@ -388,28 +445,28 @@ function Composer({ fixtureConnected }: { fixtureConnected: boolean }) {
       catch (error) { toast.error(error instanceof Error ? error.message : "Could not stop Pi"); }
       finally { setStopping(false); }
     };
-    const hasGuidance = Boolean(guidance.trim() || guidanceImages.length > 0);
-    return <div className="composer active-composer">
-      <CommandCompletion text={guidance} connected={connected} allowSessionCommands={false} onComplete={setGuidance} />
+    return <div className="composer active-composer" aria-busy={sendingGuidance}>
+      <CommandCompletion text={guidance} connected={interactive} allowSessionCommands={false} onComplete={setGuidance} />
       <GuidanceImages images={guidanceImages} onRemove={(id) => setGuidanceImages((images) => images.filter((image) => image.id !== id))} />
-      <textarea value={guidance} onChange={(e) => setGuidance(e.target.value)} onPaste={pasteImages} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); sendGuidance(); } }} rows={1} placeholder={delivery === "steer" ? "Send guidance or paste an image…" : "Queue a follow-up or paste an image…"} />
+      <textarea disabled={sendingGuidance} value={guidance} onChange={(e) => setGuidance(e.target.value)} onPaste={pasteImages} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void sendGuidance(); } }} rows={1} placeholder={!running ? "Send this preserved draft or add more detail…" : delivery === "steer" ? "Send guidance or paste an image…" : "Queue a follow-up or paste an image…"} />
       <input ref={guidanceFileInput} className="visually-hidden" type="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple onChange={(event) => { addImages(Array.from(event.target.files ?? [])); event.target.value = ""; }} />
-      <div className="composer-row"><div className="composer-left"><button type="button" className="composer-icon" disabled={!connected} onClick={() => guidanceFileInput.current?.click()} title="Attach images"><Paperclip size={15} /></button><label className="delivery-control"><select aria-label="Guidance delivery" value={delivery} onChange={(e) => setDelivery(e.target.value as typeof delivery)}><option value="steer">Steer now</option><option value="follow_up">Follow up</option></select><ChevronDown size={12} /></label></div><div>
+      <div className="composer-row"><div className="composer-left"><button type="button" className="composer-icon" disabled={sendingGuidance} onClick={() => guidanceFileInput.current?.click()} title="Attach images"><Paperclip size={15} /></button>{running ? <label className="delivery-control"><select aria-label="Guidance delivery" disabled={sendingGuidance} value={delivery} onChange={(e) => setDelivery(e.target.value as GuidanceDelivery)}><option value="steer">Steer now</option><option value="follow_up">Queue next</option></select><ChevronDown size={12} /></label> : <span className="unsent-guidance-status">Draft preserved</span>}</div><div>
         <ContextWindowIndicator />
-        {hasGuidance && <button className="composer-icon secondary-stop" disabled={!connected || stopping} onClick={() => void stop()} title={stopping ? "Stopping Pi" : "Stop Pi"}><Square size={10} fill="currentColor" /></button>}
+        {running && hasGuidance && <button className="composer-icon secondary-stop" disabled={stopping || sendingGuidance} onClick={() => void stop()} title={stopping ? "Stopping Pi" : "Stop Pi"}><Square size={10} fill="currentColor" /></button>}
         {hasGuidance
-          ? <button className="send-button" disabled={!connected} onClick={sendGuidance} title="Send guidance"><ArrowUp size={17} /></button>
-          : <button className="send-button stop-control" disabled={!connected || stopping} onClick={() => void stop()} title={stopping ? "Stopping Pi" : "Stop Pi"}><Square size={11} fill="currentColor" /></button>}
+          ? <button className="send-button" disabled={sendingGuidance} onClick={() => void sendGuidance()} title={sendingGuidance ? "Sending guidance" : "Send guidance"}>{sendingGuidance ? <LoaderCircle className="spin" size={15} /> : <ArrowUp size={17} />}</button>
+          : <button className="send-button stop-control" disabled={stopping} onClick={() => void stop()} title={stopping ? "Stopping Pi" : "Stop Pi"}><Square size={11} fill="currentColor" /></button>}
       </div></div>
     </div>;
   }
+
   return <ComposerPrimitive.Root className="composer">
-    <IdleCommandCompletion connected={connected} />
+    <IdleCommandCompletion connected={interactive} />
     <ComposerImages />
-    <ComposerPrimitive.Input disabled={!connected} autoFocus rows={1} placeholder={connected ? "Ask Pi to make a change, paste an image, or type /…" : "Select a connected instance"} />
-    <div className="composer-row"><div className="composer-left"><ComposerPrimitive.AddAttachment asChild><button type="button" className="composer-icon" disabled={!connected} title="Attach images"><Paperclip size={15} /></button></ComposerPrimitive.AddAttachment></div><div>
-      <ComposerControls connected={connected} /><ContextWindowIndicator />
-      <ComposerPrimitive.Send asChild><button className="send-button" disabled={!connected} title="Send"><ArrowUp size={17} /></button></ComposerPrimitive.Send>
+    <ComposerPrimitive.Input rows={1} placeholder="Ask Pi to make a change, paste an image, or type /…" />
+    <div className="composer-row"><div className="composer-left"><ComposerPrimitive.AddAttachment asChild><button type="button" className="composer-icon" title="Attach images"><Paperclip size={15} /></button></ComposerPrimitive.AddAttachment></div><div>
+      <ComposerControls connected={interactive} /><ContextWindowIndicator />
+      <ComposerPrimitive.Send asChild><button className="send-button" title="Send"><ArrowUp size={17} /></button></ComposerPrimitive.Send>
     </div></div>
   </ComposerPrimitive.Root>;
 }

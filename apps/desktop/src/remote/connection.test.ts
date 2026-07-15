@@ -31,4 +31,27 @@ describe("connection auth boundary", () => {
     expect(states).toContain("connected");
     connection.disconnect();
   });
+
+  it("does not reconnect with a stale token after rotation", () => {
+    vi.useFakeTimers();
+    try {
+      (globalThis as any).WebSocket = FakeSocket;
+      const socket = new FakeSocket();
+      const states: Array<{ state: string; detail?: string }> = [];
+      let opens = 0;
+      const connection = new PiConnection({
+        onState: (state, detail) => states.push({ state, detail }),
+        onMessage: vi.fn(),
+      }, () => { opens++; return socket as any; });
+
+      connection.connect({ host: "10.0.0.2", controlPort: 31415, plannotatorPort: 19432, token: "old-token" });
+      socket.onclose!({ code: 4004, reason: "Token rotated" } as CloseEvent);
+      vi.advanceTimersByTime(30_000);
+
+      expect(opens).toBe(1);
+      expect(states.at(-1)).toEqual({ state: "error", detail: "Token rotated" });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

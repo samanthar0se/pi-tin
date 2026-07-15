@@ -9,9 +9,12 @@ import type {
   SessionDescriptor,
 } from "@pi-tin/protocol";
 import { PiConnection, type HostProfile } from "./connection";
+import { nextEventAttention, type SessionAttention } from "./attention";
 import { emptySession, reducePiEvent, replaceFromSnapshot, type SessionState } from "./reducer";
+import { createEmptySessionDraft, type SessionDraft } from "../runtime/session-draft";
 
 export type ActiveReview = { reviewId: string; kind: "plan" | "code"; url: string; visible: boolean; loading: boolean };
+export type { SessionAttention } from "./attention";
 
 type LegacyHostProfile = HostProfile & { id?: string; name?: string };
 type RpcStatus = "starting" | "ready" | "error" | "stopped";
@@ -20,6 +23,8 @@ type SessionViewState = {
   rpcStatus: RpcStatus;
   review: ActiveReview | null;
   extensionUiRequest: ExtensionUiRequest | null;
+  attention: SessionAttention;
+  draft: SessionDraft;
   lastError?: string;
 };
 
@@ -43,6 +48,7 @@ type AppStore = {
   setActiveSession: (sessionId: string) => void;
   createSession: (cwd: string) => Promise<string>;
   closeSession: (sessionId: string) => Promise<void>;
+  updateSessionDraft: (sessionId: string, update: (draft: SessionDraft) => SessionDraft) => void;
   command: (command: SessionCommandInput, timeoutMs?: number) => Promise<unknown>;
   respondToExtensionUi: (response: { value?: string; confirmed?: boolean; cancelled?: boolean }) => Promise<void>;
   showReview: (visible: boolean) => void;
@@ -118,6 +124,8 @@ function emptyView(descriptor?: SessionDescriptor): SessionViewState {
     rpcStatus: descriptor?.rpcStatus || "stopped",
     review: null,
     extensionUiRequest: null,
+    attention: null,
+    draft: createEmptySessionDraft(),
   };
 }
 
@@ -165,9 +173,16 @@ export const useAppStore = create<AppStore>((set, get) => {
               },
             } : emptyView(descriptor);
           }
-          const activeSessionId = state.activeSessionId && sessionViews[state.activeSessionId]
+          let activeSessionId = state.activeSessionId && sessionViews[state.activeSessionId]
             ? state.activeSessionId
-            : message.sessions[0]?.sessionId || null;
+            : null;
+          if (!activeSessionId && message.sessions.length > 0) {
+            const previousIndex = state.sessions.findIndex((session) => session.sessionId === state.activeSessionId);
+            activeSessionId = message.sessions[Math.min(Math.max(previousIndex, 0), message.sessions.length - 1)].sessionId;
+          }
+          if (activeSessionId !== state.activeSessionId && activeSessionId) {
+            sessionViews[activeSessionId] = { ...sessionViews[activeSessionId], attention: null };
+          }
           return {
             sessions: message.sessions,
             sessionViews,
@@ -198,9 +213,12 @@ export const useAppStore = create<AppStore>((set, get) => {
       } else if (message.type === "host_state") {
         set((state) => {
           const previous = state.sessionViews[message.sessionId] || emptyView();
+          const attention = state.activeSessionId === message.sessionId
+            ? null
+            : message.rpcStatus === "error" ? "failed" : previous.attention;
           const sessionViews = {
             ...state.sessionViews,
-            [message.sessionId]: { ...previous, rpcStatus: message.rpcStatus, lastError: message.error },
+            [message.sessionId]: { ...previous, rpcStatus: message.rpcStatus, attention, lastError: message.error },
           };
           const sessions = updateDescriptor(state.sessions, message.sessionId, {
             rpcStatus: message.rpcStatus,
@@ -216,11 +234,21 @@ export const useAppStore = create<AppStore>((set, get) => {
         set((state) => {
           const previous = state.sessionViews[message.sessionId] || emptyView();
           const session = reducePiEvent(previous.session, message.event);
+          const event = message.event as { type?: string; message?: { stopReason?: string }; isError?: boolean };
+          const isActive = state.activeSessionId === message.sessionId;
+          const attention = nextEventAttention({
+            previous: previous.attention,
+            isActive,
+            wasRunning: previous.session.isRunning,
+            isRunning: session.isRunning,
+            event,
+          });
           const sessionViews = {
             ...state.sessionViews,
             [message.sessionId]: {
               ...previous,
               session,
+              attention,
               ...(message.event.type === "agent_settled" ? { extensionUiRequest: null } : {}),
             },
           };
@@ -237,12 +265,15 @@ export const useAppStore = create<AppStore>((set, get) => {
             const previous = state.sessionViews[message.sessionId] || emptyView();
             const sessionViews = {
               ...state.sessionViews,
-              [message.sessionId]: { ...previous, extensionUiRequest: message },
+              [message.sessionId]: {
+                ...previous,
+                extensionUiRequest: message,
+                attention: state.activeSessionId === message.sessionId ? null : "needs-input" as const,
+              },
             };
             return {
               sessionViews,
-              activeSessionId: message.sessionId,
-              ...activeProjection(sessionViews, message.sessionId),
+              ...(state.activeSessionId === message.sessionId ? activeProjection(sessionViews, state.activeSessionId) : {}),
             };
           });
         } else if (message.method === "notify" && message.notifyType === "error") {
@@ -250,7 +281,11 @@ export const useAppStore = create<AppStore>((set, get) => {
             const previous = state.sessionViews[message.sessionId] || emptyView();
             const sessionViews = {
               ...state.sessionViews,
-              [message.sessionId]: { ...previous, lastError: message.message },
+              [message.sessionId]: {
+                ...previous,
+                attention: state.activeSessionId === message.sessionId ? null : "failed" as const,
+                lastError: message.message,
+              },
             };
             return {
               sessionViews,
@@ -266,23 +301,25 @@ export const useAppStore = create<AppStore>((set, get) => {
             [message.sessionId]: {
               ...previous,
               review: { reviewId: message.reviewId, kind: message.kind, url: reviewUrl(get().profile, message), visible: true, loading: true },
+              attention: state.activeSessionId === message.sessionId ? null : "review" as const,
             },
           };
           return {
             sessionViews,
             sessions: updateDescriptor(state.sessions, message.sessionId, { activeReviewId: message.reviewId }),
-            activeSessionId: message.sessionId,
-            ...activeProjection(sessionViews, message.sessionId),
+            ...(state.activeSessionId === message.sessionId ? activeProjection(sessionViews, state.activeSessionId) : {}),
           };
         });
       } else if (message.type === "review_finished") {
         set((state) => {
           const previous = state.sessionViews[message.sessionId] || emptyView();
+          const attention: SessionAttention = state.activeSessionId === message.sessionId ? null : message.error ? "failed" : "completed";
           const sessionViews = {
             ...state.sessionViews,
             [message.sessionId]: {
               ...previous,
               review: previous.review?.reviewId === message.reviewId ? null : previous.review,
+              attention,
               lastError: message.error,
             },
           };
@@ -298,7 +335,11 @@ export const useAppStore = create<AppStore>((set, get) => {
             const previous = state.sessionViews[message.sessionId!] || emptyView();
             const sessionViews = {
               ...state.sessionViews,
-              [message.sessionId!]: { ...previous, lastError: message.message },
+              [message.sessionId!]: {
+                ...previous,
+                attention: state.activeSessionId === message.sessionId ? null : "failed" as const,
+                lastError: message.message,
+              },
             };
             return {
               sessionViews,
@@ -364,9 +405,15 @@ export const useAppStore = create<AppStore>((set, get) => {
       set({ connectionState: "offline", connectionDetail: undefined, review: null });
     },
     setActiveSession(activeSessionId) {
-      set((state) => state.sessionViews[activeSessionId]
-        ? { activeSessionId, ...activeProjection(state.sessionViews, activeSessionId) }
-        : {});
+      set((state) => {
+        const previous = state.sessionViews[activeSessionId];
+        if (!previous) return {};
+        const sessionViews = {
+          ...state.sessionViews,
+          [activeSessionId]: { ...previous, attention: null },
+        };
+        return { sessionViews, activeSessionId, ...activeProjection(sessionViews, activeSessionId) };
+      });
     },
     async createSession(cwd) {
       const result = await connection.command({ type: "create_session", cwd }, 30_000) as { sessionId: string };
@@ -375,6 +422,20 @@ export const useAppStore = create<AppStore>((set, get) => {
     },
     async closeSession(sessionId) {
       await connection.command({ type: "close_session", sessionId }, 30_000);
+    },
+    updateSessionDraft(sessionId, update) {
+      set((state) => {
+        const previous = state.sessionViews[sessionId];
+        if (!previous) return {};
+        const draft = update(previous.draft);
+        if (draft === previous.draft) return {};
+        return {
+          sessionViews: {
+            ...state.sessionViews,
+            [sessionId]: { ...previous, draft },
+          },
+        };
+      });
     },
     command(command, timeoutMs) {
       const sessionId = get().activeSessionId;
@@ -390,7 +451,7 @@ export const useAppStore = create<AppStore>((set, get) => {
         if (!previous || previous.extensionUiRequest?.id !== request.id) return {};
         const sessionViews = {
           ...state.sessionViews,
-          [request.sessionId]: { ...previous, extensionUiRequest: null },
+          [request.sessionId]: { ...previous, extensionUiRequest: null, attention: null },
         };
         return {
           sessionViews,
