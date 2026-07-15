@@ -32,6 +32,7 @@ Codex completed in `1m 52s`. Pi completed in `1m 42s`. Neither modified reposito
 | Built-in slash commands | Task controls remain discoverable in the composer | RPC discovery omits Pi built-ins, so `/compact` was absent even though the header action existed | Register local `/new` and `/compact` entries and route them to real host commands. |
 | Batched tools | Consecutive shell work may appear as `Ran commands` | Each Pi tool call originally rendered as a separate top-level row | Group consecutive shell calls behind one expandable `Ran commands` row while preserving every ordered command and result inside. |
 | Streaming transcript | Earlier turns remain stable while the latest answer streams | assistant-ui's incremental branch repository could temporarily select a partial branch | Rebuild one exact linear repository from Pi's authoritative message array on every update. |
+| Streaming work boundary | Progress stays in the work transcript until the final answer actually begins | Unclassified streamed text after reasoning/tool activity was provisionally treated as the final answer, collapsing earlier work until the next reasoning part arrived | Keep unclassified running text in work and use Pi's finalized `commentary` / `final_answer` phase markers when available. |
 
 ## Changes From This Comparison
 
@@ -43,6 +44,7 @@ Codex completed in `1m 52s`. Pi completed in `1m 42s`. Neither modified reposito
 - The composer now discovers and executes `/compact`, including optional custom compaction instructions, and shows a dedicated live status while Pi summarizes the session.
 - Expanded work transcripts clean raw reasoning markdown, use tighter spacing, and consolidate consecutive shell calls without discarding details.
 - Streaming updates now replace assistant-ui's internal repository with the complete authoritative Pi transcript, preventing temporary branch loss.
+- Running turns keep a monotonic work boundary, so new progress or reasoning cannot temporarily hide earlier work transcript items.
 
 ## Remaining Reliability Findings
 

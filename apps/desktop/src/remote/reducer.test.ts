@@ -30,7 +30,9 @@ describe("Pi state reduction", () => {
     let state = reducePiEvent(emptySession, { type: "agent_start", timestamp: "2026-07-14T12:00:00.000Z" });
     state = reducePiEvent(state, { type: "message_start", message: { id: "a1", role: "assistant", content: [] } });
     state = reducePiEvent(state, { type: "message_update", assistantMessageEvent: { type: "text_delta", delta: "Checking." } });
-    state = reducePiEvent(state, { type: "message_end", message: { id: "a1", role: "assistant", content: [{ type: "text", text: "Checking." }, { type: "toolCall", id: "t1", name: "read", arguments: { path: "a.ts" } }] } });
+    state = reducePiEvent(state, { type: "message_end", message: { id: "a1", role: "assistant", stopReason: "toolUse", content: [{ type: "text", text: "Checking." }, { type: "toolCall", id: "t1", name: "read", arguments: { path: "a.ts" } }] } });
+    expect(state.messages[0]!.status).toEqual({ type: "running" });
+    expect(state.messages[0]!.metadata?.custom).not.toHaveProperty("completedAtMs");
     state = reducePiEvent(state, { type: "tool_execution_start", toolCallId: "t1", toolName: "read", args: { path: "a.ts" } });
     state = reducePiEvent(state, { type: "tool_execution_end", toolCallId: "t1", result: { content: [{ type: "text", text: "file" }] }, isError: false });
     state = reducePiEvent(state, { type: "message_start", message: { id: "a2", role: "assistant", content: [] } });
@@ -42,6 +44,22 @@ describe("Pi state reduction", () => {
     expect((state.messages[0]!.content as any[]).map((part) => part.text).filter(Boolean)).toEqual(["Checking.", "Done."]);
     expect((state.messages[0]!.content as any[])[1].result).toBe("file");
     expect(state.messages[0]!.metadata?.custom).toMatchObject({ startedAtMs: 1_784_030_400_000, completedAtMs: 1_784_030_523_000 });
+  });
+
+  it("preserves commentary and final-answer phases from Pi text signatures", () => {
+    const signature = (phase: "commentary" | "final_answer") => JSON.stringify({ v: 1, id: phase, phase });
+    let state = reducePiEvent(emptySession, { type: "message_start", message: { id: "a1", role: "assistant", content: [] } });
+    state = reducePiEvent(state, { type: "message_end", message: { id: "a1", role: "assistant", content: [
+      { type: "text", text: "Checking.", textSignature: signature("commentary") },
+      { type: "thinking", thinking: "Inspecting" },
+      { type: "text", text: "Done.", textSignature: signature("final_answer") },
+    ] } });
+
+    expect(state.messages[0]!.content).toEqual([
+      { type: "text", text: "Checking.", phase: "commentary" },
+      { type: "reasoning", text: "Inspecting" },
+      { type: "text", text: "Done.", phase: "final_answer" },
+    ]);
   });
 
   it("authoritatively replaces stale state after reconnect", () => {

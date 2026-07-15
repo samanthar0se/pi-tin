@@ -29,12 +29,26 @@ function asObject(value: unknown): Record<string, any> {
   return value && typeof value === "object" ? value as Record<string, any> : {};
 }
 
+function textPhase(part: any): "commentary" | "final_answer" | undefined {
+  if (part?.phase === "commentary" || part?.phase === "final_answer") return part.phase;
+  if (typeof part?.textSignature !== "string") return undefined;
+  try {
+    const phase = JSON.parse(part.textSignature)?.phase;
+    return phase === "commentary" || phase === "final_answer" ? phase : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function contentParts(message: any): any[] {
   const content = message?.content;
   if (typeof content === "string") return content ? [{ type: "text", text: content }] : [];
   if (!Array.isArray(content)) return [];
   return content.flatMap((part: any): any[] => {
-    if (part?.type === "text") return [{ type: "text", text: String(part.text || "") }];
+    if (part?.type === "text") {
+      const phase = textPhase(part);
+      return [{ type: "text", text: String(part.text || ""), ...(phase ? { phase } : {}) }];
+    }
     if (part?.type === "image" && typeof part.data === "string" && typeof part.mimeType === "string") {
       return [{ type: "image", image: `data:${part.mimeType};base64,${part.data}` }];
     }
@@ -183,13 +197,15 @@ export function reducePiEvent(state: SessionState, rawEvent: unknown): SessionSt
       const delta = asObject(event.assistantMessageEvent);
       if (delta.type !== "text_delta" && delta.type !== "thinking_delta" && delta.type !== "reasoning_delta") return state;
       const type = delta.type === "text_delta" ? "text" : "reasoning";
+      const partialContent = Array.isArray(delta.partial?.content) ? delta.partial.content : [];
+      const phase = type === "text" ? textPhase(partialContent[Number(delta.contentIndex)]) : undefined;
       return { ...state, messages: updateLastAssistant(state.messages, (message) => {
         const parts = [...(message.content as any[])];
         let index = findLastMatching(parts, (part: any) => part.type === type, state.activeAssistantPartStart ?? 0);
-        if (index < 0) { parts.push({ type, text: "" }); index = parts.length - 1; }
-        parts[index] = { ...parts[index], text: String(parts[index].text || "") + String(delta.delta || "") };
+        if (index < 0) { parts.push({ type, text: "", ...(phase ? { phase } : {}) }); index = parts.length - 1; }
+        parts[index] = { ...parts[index], text: String(parts[index].text || "") + String(delta.delta || ""), ...(phase ? { phase } : {}) };
         const updated = { ...message, content: parts, status: { type: "running" } } as UiMessage;
-        const finalAnswerStarted = type === "text" && parts.slice(0, index).some((part) => part.type === "reasoning" || part.type === "tool-call");
+        const finalAnswerStarted = type === "text" && phase === "final_answer";
         return finalAnswerStarted && typeof message.metadata?.custom?.completedAtMs !== "number"
           ? withTiming(updated, Number(message.metadata?.custom?.startedAtMs ?? Date.now()), timestampMs(event.timestamp) ?? Date.now())
           : updated;
@@ -199,17 +215,25 @@ export function reducePiEvent(state: SessionState, rawEvent: unknown): SessionSt
       const msg = asObject(event.message);
       if (msg.role !== "assistant") return state;
       const finalizedParts = contentParts(msg);
-      return { ...state, messages: updateLastAssistant(state.messages, (current) => ({
-        ...withTiming(
-          current,
-          Number(current.metadata?.custom?.startedAtMs ?? Date.now()),
-          Number(current.metadata?.custom?.completedAtMs ?? timestampMs(event.timestamp ?? msg.timestamp) ?? Date.now()),
-        ),
-        content: state.activeAssistantPartStart === null
+      const continuesWithTools = msg.stopReason === "toolUse";
+      return { ...state, messages: updateLastAssistant(state.messages, (current) => {
+        const timed = continuesWithTools
+          ? clearCompletedTiming(current)
+          : withTiming(
+            current,
+            Number(current.metadata?.custom?.startedAtMs ?? Date.now()),
+            Number(current.metadata?.custom?.completedAtMs ?? timestampMs(event.timestamp ?? msg.timestamp) ?? Date.now()),
+          );
+        return {
+          ...timed,
+          content: state.activeAssistantPartStart === null
           ? finalizedParts
           : [...(current.content as any[]).slice(0, state.activeAssistantPartStart), ...finalizedParts],
-        status: msg.stopReason === "error" ? { type: "incomplete", reason: "error" } : { type: "complete", reason: "stop" },
-      } as UiMessage)), activeAssistantPartStart: null };
+          status: continuesWithTools
+            ? { type: "running" }
+            : msg.stopReason === "error" ? { type: "incomplete", reason: "error" } : { type: "complete", reason: "stop" },
+        } as UiMessage;
+      }), activeAssistantPartStart: null };
     }
     case "tool_execution_start":
       return { ...state, messages: updateLastAssistant(state.messages, (message) => {

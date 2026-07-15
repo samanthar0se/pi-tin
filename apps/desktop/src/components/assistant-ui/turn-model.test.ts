@@ -56,6 +56,39 @@ describe("createTurnRenderModel", () => {
     expect(model.answerParts).toEqual([3]);
   });
 
+  it("keeps unclassified streamed text in work after reasoning starts", () => {
+    const progress = createTurnRenderModel([
+      { type: "reasoning", text: "Inspecting" },
+      { type: "text", text: "I’m checking the reducer now." },
+    ], { messageStatus: { type: "running" } });
+    const nextReasoning = createTurnRenderModel([
+      { type: "reasoning", text: "Inspecting" },
+      { type: "text", text: "I’m checking the reducer now." },
+      { type: "reasoning", text: "Tracing updates" },
+    ], { messageStatus: { type: "running" } });
+
+    expect(progress.work?.status).toBe("running");
+    expect(progress.work?.items.map((item) => item.kind)).toEqual(["reasoning", "progress"]);
+    expect(progress.answerParts).toEqual([]);
+    expect(nextReasoning.work?.items.map((item) => item.kind)).toEqual(["reasoning", "progress", "reasoning"]);
+  });
+
+  it("uses Pi text phases before falling back to a completed trailing answer", () => {
+    const phased = createTurnRenderModel([
+      { type: "text", text: "Checking files.", phase: "commentary" },
+      { type: "tool-call", toolCallId: "read-1", toolName: "read", result: "ok" },
+      { type: "text", text: "The issue is fixed.", phase: "final_answer" },
+    ], { messageStatus: { type: "running" } });
+    const completedFallback = createTurnRenderModel([
+      { type: "reasoning", text: "Checking" },
+      { type: "text", text: "Done." },
+    ], { messageStatus: { type: "complete" } });
+
+    expect(phased.work?.items.map((item) => item.kind)).toEqual(["progress", "activity"]);
+    expect(phased.answerParts).toEqual([2]);
+    expect(completedFallback.answerParts).toEqual([1]);
+  });
+
   it("marks tool errors and cancellations without hiding a final answer", () => {
     const failed = createTurnRenderModel([
       { type: "tool-call", toolName: "read", result: "not found", isError: true },

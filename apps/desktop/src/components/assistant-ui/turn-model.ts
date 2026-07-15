@@ -1,6 +1,7 @@
 export type TurnPart = {
   type?: string;
   text?: string;
+  phase?: "commentary" | "final_answer";
   toolCallId?: string;
   toolName?: string;
   args?: Record<string, unknown>;
@@ -198,15 +199,16 @@ function workStatus(parts: readonly TurnPart[], options: TurnModelOptions, final
 }
 
 export function createTurnRenderModel(parts: readonly TurnPart[], options: TurnModelOptions = {}): TurnRenderModel {
-  let lastActivityIndex = -1;
+  let lastWorkSignalIndex = -1;
   for (let index = parts.length - 1; index >= 0; index--) {
-    if (parts[index]?.type === "reasoning" || parts[index]?.type === "tool-call") {
-      lastActivityIndex = index;
+    const part = parts[index];
+    if (part?.type === "reasoning" || part?.type === "tool-call" || (part?.type === "text" && part.phase === "commentary")) {
+      lastWorkSignalIndex = index;
       break;
     }
   }
 
-  if (lastActivityIndex < 0) {
+  if (lastWorkSignalIndex < 0) {
     const pendingEmptyTurn = parts.length === 0 && options.messageStatus?.type === "running";
     return {
       work: pendingEmptyTurn ? {
@@ -219,12 +221,18 @@ export function createTurnRenderModel(parts: readonly TurnPart[], options: TurnM
     };
   }
 
+  const explicitFinalIndex = parts.findIndex((part) => part.type === "text" && part.phase === "final_answer");
+  const running = options.messageStatus?.type === "running";
+  const answerStartIndex = explicitFinalIndex >= 0
+    ? explicitFinalIndex
+    : running ? parts.length : lastWorkSignalIndex + 1;
   const answerParts = parts
     .map((_, index) => index)
-    .filter((index) => index > lastActivityIndex && meaningfulPart(parts[index]!));
+    .filter((index) => index >= answerStartIndex && meaningfulPart(parts[index]!));
   const status = workStatus(parts, options, answerParts.length > 0);
   const items: WorkItem[] = [];
-  for (let partIndex = 0; partIndex <= lastActivityIndex; partIndex++) {
+  const workEndIndex = answerStartIndex - 1;
+  for (let partIndex = 0; partIndex <= workEndIndex; partIndex++) {
     const part = parts[partIndex]!;
     if (!meaningfulPart(part)) continue;
     if (part.type === "tool-call") {
@@ -235,7 +243,7 @@ export function createTurnRenderModel(parts: readonly TurnPart[], options: TurnM
         id: `${part.type === "reasoning" ? "reasoning" : "progress"}-${partIndex}`,
         kind: part.type === "reasoning" ? "reasoning" : "progress",
         partIndex,
-        pending: status === "running" && partIndex === lastActivityIndex,
+        pending: status === "running" && partIndex === workEndIndex,
       });
     }
   }
